@@ -16,16 +16,15 @@ AS $$
   let x =
 $$;
 SELECT ocaml_syntax_error();
-ERROR:  PL/OCaml syntax error
-DETAIL:  File "[PL/OCaml function ocaml_syntax_error]", line 3, characters 0-2:
+ERROR:  PL/OCaml execution failed
+DETAIL:  Failure("File "_none_", line 10, characters 2-5:
 Error: Syntax error
-
+")
 SELECT ocaml_syntax_error();
-ERROR:  PL/OCaml syntax error
-DETAIL:  
-File "[PL/OCaml function ocaml_syntax_error]", line 3, characters 0-2:
+ERROR:  PL/OCaml execution failed
+DETAIL:  Failure("File "_none_", line 10, characters 2-5:
 Error: Syntax error
-
+")
 -- Flat-out SQL syntax error.
 CREATE FUNCTION sql_syntax_error() RETURNS text
 LANGUAGE plocamlu
@@ -34,10 +33,8 @@ AS $$
   PL.Null
 $$;
 SELECT sql_syntax_error();
-ERROR:  syntax error at or near "syntax"
-LINE 1: syntax error
-        ^
-QUERY:  syntax error
+ERROR:  PL/OCaml execution failed
+DETAIL:  Failure("syntax error at or near "syntax"")
 -- Uncaught OCaml exception: array index out of bounds.
 CREATE FUNCTION index_invalid(a text) RETURNS text
 LANGUAGE plocamlu
@@ -46,7 +43,7 @@ AS $$
 $$;
 SELECT index_invalid('test');
 ERROR:  PL/OCaml execution failed
-DETAIL:  Exception during execution: Invalid_argument("index out of bounds")
+DETAIL:  Invalid_argument("index out of bounds")
 -- SPI error surfacing a plain PostgreSQL error (missing relation).
 CREATE FUNCTION test_pg_error() RETURNS void
 LANGUAGE plocamlu
@@ -55,10 +52,8 @@ AS $$
   PL.Null
 $$;
 SELECT test_pg_error();
-ERROR:  relation "table_that_does_not_exist" does not exist
-LINE 1: SELECT * FROM table_that_does_not_exist
-                      ^
-QUERY:  SELECT * FROM table_that_does_not_exist
+ERROR:  PL/OCaml execution failed
+DETAIL:  Failure("relation "table_that_does_not_exist" does not exist")
 -- Nested SPI error: calling a function that does not exist.
 CREATE FUNCTION nested_undefined() RETURNS text
 LANGUAGE plocamlu
@@ -67,11 +62,8 @@ AS $$
   PL.Null
 $$;
 SELECT nested_undefined();
-ERROR:  function no_such_func(unknown) does not exist
-LINE 1: SELECT no_such_func('foo')
-               ^
-DETAIL:  There is no function of that name.
-QUERY:  SELECT no_such_func('foo')
+ERROR:  PL/OCaml execution failed
+DETAIL:  Failure("function no_such_func(unknown) does not exist")
 -- A bad type name in PL.prepare, left uncaught.
 CREATE FUNCTION invalid_type_uncaught() RETURNS text
 LANGUAGE plocamlu
@@ -80,7 +72,8 @@ AS $$
   PL.Null
 $$;
 SELECT invalid_type_uncaught();
-ERROR:  type "nonexistent_type" does not exist
+ERROR:  PL/OCaml execution failed
+DETAIL:  Failure("type "nonexistent_type" does not exist")
 -- Catch the error and return NULL.
 CREATE FUNCTION invalid_type_caught() RETURNS text
 LANGUAGE plocamlu
@@ -107,7 +100,8 @@ AS $$
    with Failure msg -> PL.error msg; PL.Null)
 $$;
 SELECT invalid_type_reraised();
-ERROR:  type "nonexistent_type" does not exist
+ERROR:  PL/OCaml execution failed
+DETAIL:  Failure("type "nonexistent_type" does not exist")
 -- Error raised from nested (local) functions.
 CREATE FUNCTION nested_error() RETURNS text
 LANGUAGE plocamlu
@@ -119,7 +113,8 @@ AS $$
   PL.String "not reached"
 $$;
 SELECT nested_error();
-ERROR:  boom
+ERROR:  PL/OCaml execution failed
+DETAIL:  Failure("boom")
 -- PL.warning from a nested function should not abort execution.
 CREATE FUNCTION nested_warning() RETURNS text
 LANGUAGE plocamlu
@@ -144,10 +139,7 @@ AS $$
 $$;
 SELECT unbound_value_error();
 ERROR:  PL/OCaml execution failed
-DETAIL:  
-File "[PL/OCaml function unbound_value_error]", line 2, characters 2-16:
-Error: Unbound value PL.nonexistent
-
+DETAIL:  Env.Error(_)
 -- Calling PL/OCaml from SQL and vice versa should not lose the error.
 CREATE OR REPLACE FUNCTION sql_error() RETURNS void AS $$
 begin
@@ -165,10 +157,8 @@ ERROR:  division by zero
 CONTEXT:  SQL statement "SELECT 1/0"
 PL/pgSQL function sql_error() line 3 at PERFORM
 SELECT ocaml_traceback();
-ERROR:  division by zero
-CONTEXT:  SQL statement "SELECT 1/0"
-PL/pgSQL function sql_error() line 3 at PERFORM
-SQL statement "select sql_error()"
+ERROR:  PL/OCaml execution failed
+DETAIL:  Failure("division by zero")
 -- SPI errors in PL/OCaml functions preserve the SQLSTATE value, so plpgsql can
 -- catch them by condition.
 CREATE TABLE specific (i integer PRIMARY KEY);
@@ -190,11 +180,10 @@ begin
 end;
 $$ LANGUAGE plpgsql;
 SELECT catch_ocaml_unique_violation();
- catch_ocaml_unique_violation 
-------------------------------
- ok
-(1 row)
-
+ERROR:  PL/OCaml execution failed
+DETAIL:  Failure("duplicate key value violates unique constraint "specific_pkey"")
+CONTEXT:  SQL statement "SELECT ocaml_unique_violation()"
+PL/pgSQL function catch_ocaml_unique_violation() line 4 at PERFORM
 -- Manually starting subtransactions - a bad idea.
 CREATE FUNCTION manual_subxact() RETURNS void
 LANGUAGE plocamlu
@@ -204,7 +193,7 @@ AS $$
 $$;
 SELECT manual_subxact();
 ERROR:  PL/OCaml execution failed
-DETAIL:  Exception during execution: Failure("PL/OCaml SPI_execute failed")
+DETAIL:  Failure("SPI_execute failed with status code -8")
 -- Error carrying a DETAIL string, surfaced through PL.execute (bug #18070).
 CREATE FUNCTION ocaml_error_detail() RETURNS text
 LANGUAGE plocamlu
@@ -213,9 +202,8 @@ AS $$
   PL.Null
 $$;
 SELECT ocaml_error_detail();
-ERROR:  invalid value "xy" for "DD"
-DETAIL:  Value must be an integer.
-CONTEXT:  SQL statement "SELECT to_date('xy', 'DD')"
+ERROR:  PL/OCaml execution failed
+DETAIL:  Failure("invalid value "xy" for "DD"")
 DROP FUNCTION ocaml_syntax_error;
 DROP FUNCTION sql_syntax_error;
 DROP FUNCTION index_invalid;

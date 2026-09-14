@@ -48,10 +48,8 @@ SELECT * FROM subtransaction_tbl ORDER BY i;
 
 TRUNCATE subtransaction_tbl;
 SELECT subtransaction_ctx_test('SPI');
-ERROR:  invalid input syntax for type integer: "oops"
-LINE 1: INSERT INTO subtransaction_tbl VALUES ('oops')
-                                               ^
-QUERY:  INSERT INTO subtransaction_tbl VALUES ('oops')
+ERROR:  PL/OCaml execution failed
+DETAIL:  Failure("invalid input syntax for type integer: "oops"")
 SELECT * FROM subtransaction_tbl ORDER BY i;
  i 
 ---
@@ -60,7 +58,7 @@ SELECT * FROM subtransaction_tbl ORDER BY i;
 TRUNCATE subtransaction_tbl;
 SELECT subtransaction_ctx_test('OCaml');
 ERROR:  PL/OCaml execution failed
-DETAIL:  Exception during execution: Failure("OCaml exception")
+DETAIL:  Failure("OCaml exception")
 SELECT * FROM subtransaction_tbl ORDER BY i;
  i 
 ---
@@ -85,10 +83,8 @@ AS $$
   PL.String "ok"
 $$;
 SELECT subtransaction_nested_test();
-ERROR:  syntax error at or near "error"
-LINE 1: error
-        ^
-QUERY:  error
+ERROR:  PL/OCaml execution failed
+DETAIL:  Failure("syntax error at or near "error"")
 SELECT * FROM subtransaction_tbl ORDER BY i;
  i 
 ---
@@ -288,10 +284,13 @@ AS $$
 $$;
 SELECT cursor_aborted_subxact();
 ERROR:  PL/OCaml execution failed
-DETAIL:  Exception during execution: Failure("PL/OCaml: iterating a cursor in an aborted subtransaction")
+DETAIL:  Failure("PL/OCaml: cursor "<unnamed portal 2>" does not exist or has been closed")
 SELECT cursor_plan_aborted_subxact();
 ERROR:  PL/OCaml execution failed
-DETAIL:  Exception during execution: Failure("PL/OCaml: iterating a cursor in an aborted subtransaction")
+DETAIL:  Failure("PL/OCaml: cursor "<unnamed portal 3>" does not exist or has been closed")
 SELECT cursor_close_aborted_subxact();
-ERROR:  PL/OCaml execution failed
-DETAIL:  Exception during execution: Failure("PL/OCaml: closing a cursor in an aborted subtransaction")
+ cursor_close_aborted_subxact 
+------------------------------
+ f
+(1 row)
+

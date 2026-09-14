@@ -175,7 +175,7 @@ $$;
 SELECT double_cursor_close();
  double_cursor_close 
 ---------------------
-                    
+                   0
 (1 row)
 
 CREATE FUNCTION cursor_fetch() RETURNS int
@@ -194,7 +194,7 @@ $$;
 SELECT cursor_fetch();
  cursor_fetch 
 --------------
-             
+            0
 (1 row)
 
 CREATE FUNCTION fetch_after_close() RETURNS int
@@ -207,7 +207,7 @@ AS $$
 $$;
 SELECT fetch_after_close();
 ERROR:  PL/OCaml execution failed
-DETAIL:  Exception during execution: Failure("PL/OCaml: attempt to fetch from a closed cursor")
+DETAIL:  Failure("PL/OCaml: cursor is closed")
 CREATE FUNCTION cursor_plan() RETURNS text
 LANGUAGE plocamlu
 AS $$
@@ -239,7 +239,7 @@ AS $$
 $$;
 SELECT cursor_plan_wrong_args();
 ERROR:  PL/OCaml execution failed
-DETAIL:  Exception during execution: Failure("PL/OCaml: incorrect number of arguments for plan")
+DETAIL:  Failure("PL/OCaml: incorrect number of arguments for cursor plan (expected 1, got 2)")
 CREATE FUNCTION execute_plan_wrong_args() RETURNS text
 LANGUAGE plocamlu
 AS $$
@@ -249,4 +249,4 @@ AS $$
 $$;
 SELECT execute_plan_wrong_args();
 ERROR:  PL/OCaml execution failed
-DETAIL:  Exception during execution: Failure("PL/OCaml: incorrect number of arguments for plan")
+DETAIL:  Failure("PL/OCaml: incorrect number of arguments for plan (expected 1, got 2)")

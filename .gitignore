@@ -11,6 +11,8 @@ compile_commands.json
 # tests
 *.diffs
 results/
+regression.out
+regression.diffs
 tests/pg_regress/results
 tests/pg_regress/regression.diffs
 tests/pg_regress/regression.out

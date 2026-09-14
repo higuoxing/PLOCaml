@@ -150,6 +150,9 @@ let compile_function (fn_oid : int) (prosrc : string) (arg_names : string array)
   done;
   Buffer.add_string buf
     (Printf.sprintf "  let sd = Plocaml.get_sd %d in\n" fn_oid);
+  Buffer.add_string buf "  let gd = Plocaml.gd in\n";
+  Buffer.add_string buf "  ignore gd;\n";
+  Buffer.add_string buf "  ignore sd;\n";
   Buffer.add_string buf "  Obj.repr (begin\n";
   Buffer.add_string buf prosrc;
   Buffer.add_string buf "\n  end)\n;;\n";
