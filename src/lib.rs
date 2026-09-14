@@ -961,6 +961,9 @@ mod tests {
 }
 
 #[cfg(test)]
+mod sql_regress;
+
+#[cfg(test)]
 mod host_tests {
     #[test]
     fn test_standalone_do_commit_and_rollback() {

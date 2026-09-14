@@ -45,17 +45,3 @@ jobs:
       - name: Run pgrx tests
         run: |
           cargo pgrx test --no-default-features --features pg${{ matrix.pg_version }} pg_test
-
-      - name: Install extension and run ported pg_regress suite
-        if: matrix.pg_version == 16
-        run: |
-          cargo pgrx install --no-default-features --features pg16
-          cargo pgrx start pg16 || true
-          export PGHOST=127.0.0.1 PGPORT=28816
-          PG_BIN="$(dirname "$(python3 -c "import pathlib,re; t=pathlib.Path.home().joinpath('.pgrx','config.toml').read_text(); m=re.search(r'pg16\\s*=\\s*\\\"([^\\\"]+)\\\"', t); print(m.group(1) if m else '')")")"
-          export PATH="$PG_BIN:$PATH"
-          make installcheck PG_CONFIG="$PG_BIN/pg_config" || {
-            echo "==== regression.diffs ===="
-            cat regression.diffs || true
-            exit 1
-          }
