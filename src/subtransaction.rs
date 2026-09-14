@@ -38,6 +38,7 @@ pub unsafe extern "C" fn plocaml_commit(_unit: ocaml::sys::Value) -> ocaml::sys:
 
     let try_res = PgTryBuilder::new(|| {
         pg_sys::SPI_commit();
+        pg_sys::SPI_start_transaction();
         Ok(())
     })
     .catch_others(|err| {
@@ -68,6 +69,7 @@ pub unsafe extern "C" fn plocaml_rollback(_unit: ocaml::sys::Value) -> ocaml::sy
 
     let try_res = PgTryBuilder::new(|| {
         pg_sys::SPI_rollback();
+        pg_sys::SPI_start_transaction();
         Ok(())
     })
     .catch_others(|err| {

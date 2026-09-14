@@ -173,7 +173,7 @@ PL.info (string_of_int (get 1));
 PL.info (string_of_int (get (Array.length result.rows - 1)));
 PL.info (Printf.sprintf "[%d; %d]" (get 1) (get 2));
 PL.info (Printf.sprintf "[%d; %d]" (get 0) (get 2));
-PL.Null
+()
 $$ LANGUAGE plocamlu;
 
 SELECT result_subscript_test();
@@ -182,7 +182,7 @@ CREATE FUNCTION result_empty_test() RETURNS void
 AS $$
 let result = PL.execute "select 1 where false" in
 PL.info (Printf.sprintf "nrows=%d" result.nrows);
-PL.Null
+()
 $$ LANGUAGE plocamlu;
 
 SELECT result_empty_test();

@@ -38,8 +38,10 @@ let () =
 
 let toplevel_initialized = ref false
 
-(* Normalize CR and CRLF to LF so function bodies match PL/Python's
-   universal-newline handling (plpython_newline). *)
+(* Python 3's compiler applies universal newlines (PEP 278): CR and CRLF
+   become LF before the source is parsed. That is why official
+   plpython_newline.sql can store function bodies with \r / \r\n.
+   Mirror the same conversion so those cases work here. *)
 let normalize_newlines (s : string) : string =
   let buf = Buffer.create (String.length s) in
   let n = String.length s in
@@ -74,6 +76,12 @@ let execute_phrases (source : string) : unit =
      (try Location.report_exception fmt e with _ -> ());
      Format.pp_print_flush fmt ();
      let msg = Buffer.contents buf in
+     let rec strip_leading_newlines s =
+       if String.length s > 0 && (s.[0] = '\n' || s.[0] = '\r') then
+         strip_leading_newlines (String.sub s 1 (String.length s - 1))
+       else s
+     in
+     let msg = strip_leading_newlines msg in
      let msg = if msg = "" then Printexc.to_string e else msg in
      failwith msg);
   List.iter
@@ -137,6 +145,7 @@ let compile_function (fn_oid : int) (prosrc : string) (arg_names : string array)
   let var_name = Printf.sprintf "__plocaml_fn_%d" fn_oid in
   let nargs = Array.length arg_names in
   let buf = Buffer.create (String.length prosrc + 256) in
+  Buffer.add_string buf "[@@@warning \"-26-27\"]\n";
   Buffer.add_string buf
     (Printf.sprintf "let %s (args : Plocaml.datum array) =\n" var_name);
   for i = 0 to nargs - 1 do
@@ -151,8 +160,6 @@ let compile_function (fn_oid : int) (prosrc : string) (arg_names : string array)
   Buffer.add_string buf
     (Printf.sprintf "  let sd = Plocaml.get_sd %d in\n" fn_oid);
   Buffer.add_string buf "  let gd = Plocaml.gd in\n";
-  Buffer.add_string buf "  ignore gd;\n";
-  Buffer.add_string buf "  ignore sd;\n";
   Buffer.add_string buf "  Obj.repr (begin\n";
   Buffer.add_string buf prosrc;
   Buffer.add_string buf "\n  end)\n;;\n";

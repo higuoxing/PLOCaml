@@ -21,65 +21,66 @@ const REGRESS: &[&str] = &[
     "plocaml_import",
     "plocaml_spi",
     "plocaml_newline",
+    "plocaml_void",
     "plocaml_params",
     "plocaml_error",
     "plocaml_ereport",
     "plocaml_unicode",
     "plocaml_quote",
     "plocaml_subtransaction",
+    "plocaml_transaction",
     "plocaml_drop",
 ];
 
-/// Still requires missing handler features, or hits a known implementation
-/// bug. Official SQL is kept in `sql/` for later work.
-///
-/// - SETOF / composite / record return / OUT / void-Null / triggers
-/// - `plocaml_transaction`: `PL.commit` currently leaks a catcache reference
+/// Still requires missing handler features. Official SQL is kept in `sql/`
+/// for later work (SETOF / composite / record return / OUT / triggers).
 #[allow(dead_code)]
 const REGRESS_XFAIL: &[&str] = &[
     "plocaml_test",
-    "plocaml_void",
     "plocaml_call",
     "plocaml_setof",
     "plocaml_record",
     "plocaml_trigger",
     "plocaml_types",
     "plocaml_composite",
-    "plocaml_transaction",
 ];
 
 const SQL_REGRESS_DB: &str = "plocamlu_sql_regress";
 
-fn pg_feature_label() -> &'static str {
-    if cfg!(feature = "pg13") {
-        "pg13"
-    } else if cfg!(feature = "pg14") {
-        "pg14"
-    } else if cfg!(feature = "pg15") {
-        "pg15"
-    } else if cfg!(feature = "pg16") {
-        "pg16"
-    } else if cfg!(feature = "pg17") {
-        "pg17"
-    } else if cfg!(feature = "pg18") {
-        "pg18"
-    } else if cfg!(feature = "pg19") {
-        "pg19"
-    } else {
-        panic!("no pgXX cargo feature is enabled; run via `cargo pgrx test --features pgNN`");
-    }
-}
+#[cfg(feature = "pg13")]
+const PG_FEATURE: &str = "pg13";
+#[cfg(feature = "pg14")]
+const PG_FEATURE: &str = "pg14";
+#[cfg(feature = "pg15")]
+const PG_FEATURE: &str = "pg15";
+#[cfg(feature = "pg16")]
+const PG_FEATURE: &str = "pg16";
+#[cfg(feature = "pg17")]
+const PG_FEATURE: &str = "pg17";
+#[cfg(feature = "pg18")]
+const PG_FEATURE: &str = "pg18";
+#[cfg(feature = "pg19")]
+const PG_FEATURE: &str = "pg19";
+#[cfg(not(any(
+    feature = "pg13",
+    feature = "pg14",
+    feature = "pg15",
+    feature = "pg16",
+    feature = "pg17",
+    feature = "pg18",
+    feature = "pg19"
+)))]
+compile_error!("enable a pgXX cargo feature; run via `cargo pgrx test --features pgNN`");
 
 fn pg_config() -> PgConfig {
     if let Ok(cfg) = PgConfig::from_env() {
         return cfg;
     }
 
-    let label = pg_feature_label();
     Pgrx::from_config()
         .expect("failed to load pgrx configuration")
-        .get(label)
-        .unwrap_or_else(|e| panic!("failed to get pg_config for {label}: {e}"))
+        .get(PG_FEATURE)
+        .unwrap_or_else(|e| panic!("failed to get pg_config for {PG_FEATURE}: {e}"))
 }
 
 fn prepend_bindir_to_path(bindir: &Path) -> std::ffi::OsString {

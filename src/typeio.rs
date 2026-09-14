@@ -235,7 +235,12 @@ pub(crate) unsafe fn ocaml_value_to_pg_datum(
     type_oid: pg_sys::Oid,
 ) -> Result<(pg_sys::Datum, bool), String> {
     if type_oid == pg_sys::VOIDOID {
-        return Ok((pg_sys::Datum::from(0), false));
+        // `()` and `PL.Null` are both OCaml immediate 0. Anything else is a
+        // value, which PL/Python rejects from a void-returning function.
+        if ocaml::sys::is_long(val) && ocaml::sys::int_val(val) == 0 {
+            return Ok((pg_sys::Datum::from(0), true));
+        }
+        return Err("PL/OCaml function with return type \"void\" did not return ()".to_string());
     }
 
     if ocaml::sys::is_long(val) {

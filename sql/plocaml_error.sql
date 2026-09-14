@@ -182,7 +182,7 @@ and second () = third ()
 and third () = ignore (PL.execute "select sql_error()")
 in
 first ();
-PL.Null
+()
 $$ LANGUAGE plocamlu;
 
 CREATE OR REPLACE FUNCTION sql_error() RETURNS void AS $$
@@ -199,7 +199,7 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION sql_from_ocaml_error() RETURNS void AS $$
 ignore (PL.execute "select sql_error()");
-PL.Null
+()
 $$ LANGUAGE plocamlu;
 
 SELECT ocaml_traceback();
@@ -222,11 +222,11 @@ try
     | _ -> "NULL"
   in
   ignore (PL.execute (Printf.sprintf "insert into specific values (%s)" i_sql));
-  PL.Null
+  ()
 with Failure ex ->
   if String.contains ex 'n' || true then
     PL.notice ("SPI error: " ^ ex);
-  PL.Null
+  ()
 $$ LANGUAGE plocamlu;
 
 SELECT specific_exception(2);
@@ -238,7 +238,7 @@ SELECT specific_exception(2);
 CREATE FUNCTION ocaml_unique_violation() RETURNS void AS $$
 ignore (PL.execute "insert into specific values (1)");
 ignore (PL.execute "insert into specific values (1)");
-PL.Null
+()
 $$ LANGUAGE plocamlu;
 
 CREATE FUNCTION catch_ocaml_unique_violation() RETURNS text AS $$
@@ -260,7 +260,7 @@ CREATE FUNCTION manual_subxact() RETURNS void AS $$
 ignore (PL.execute "savepoint save");
 ignore (PL.execute "create table foo(x integer)");
 ignore (PL.execute "rollback to save");
-PL.Null
+()
 $$ LANGUAGE plocamlu;
 
 SELECT manual_subxact();
@@ -273,7 +273,7 @@ let rollback = PL.prepare "rollback to save" [||] in
 ignore (PL.execute_plan save [||]);
 ignore (PL.execute "create table foo(x integer)");
 ignore (PL.execute_plan rollback [||]);
-PL.Null
+()
 $$ LANGUAGE plocamlu;
 
 SELECT manual_subxact_prepared();

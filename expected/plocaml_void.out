@@ -2,24 +2,30 @@
 --
 -- Tests for functions that return void
 --
-
 CREATE FUNCTION test_void_func1() RETURNS void AS $$
 let x = 10 in
 ignore x;
 ()
 $$ LANGUAGE plocamlu;
-
 -- illegal: can't return non-None value in void-returning func
 CREATE FUNCTION test_void_func2() RETURNS void AS $$
 PL.Int 10
 $$ LANGUAGE plocamlu;
-
 CREATE FUNCTION test_return_none() RETURNS int AS $$
 PL.Null
 $$ LANGUAGE plocamlu;
-
-
 -- Tests for functions returning void
 SELECT test_void_func1(), test_void_func1() IS NULL AS "is null";
+ test_void_func1 | is null 
+-----------------+---------
+                 | t
+(1 row)
+
 SELECT test_void_func2(); -- should fail
+ERROR:  PL/OCaml execution failed
+DETAIL:  PL/OCaml function with return type "void" did not return ()
 SELECT test_return_none(), test_return_none() IS NULL AS "is null";
+ test_return_none | is null 
+------------------+---------
+                  | t
+(1 row)

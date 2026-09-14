@@ -73,7 +73,7 @@ AS $$
   PL.notice "notice";
   PL.warning "warning";
   PL.error "error";
-  PL.Null
+  ()
 $$ LANGUAGE plocamlu;
 
 SELECT elog_test_basic();

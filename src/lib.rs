@@ -28,8 +28,12 @@ pub extern "C-unwind" fn _PG_init() {
     if let Some(init_fn) = unsafe { ocaml::Value::named("plocaml_init_toplevel") } {
         let code_val = unsafe { ocaml::Value::string(BOOTSTRAP_CODE) };
         unsafe {
-            if let Err(err_msg) = crate::error::call_exn(init_fn, &[code_val]) {
-                pgrx::error!("failed to initialize PL/OCaml toplevel: {err_msg}");
+            if let Err(err) = crate::error::call_exn(init_fn, &[code_val]) {
+                let msg = match err {
+                    crate::error::OcamlError::Postgres(info) => info.message,
+                    crate::error::OcamlError::Other(s) => s,
+                };
+                pgrx::error!("failed to initialize PL/OCaml toplevel: {msg}");
             }
         }
     }
@@ -375,7 +379,7 @@ mod tests {
         .expect("DO block failed");
     }
 
-    #[pg_test(error = "PL/OCaml execution failed")]
+    #[pg_test(error = "Fatal custom error")]
     fn test_log_error_uncaught_fails() {
         Spi::run(
             r#"DO $$
@@ -391,7 +395,7 @@ mod tests {
             r#"DO $$
             try
               PL.Log.error "Caught error"
-            with Failure _ -> ()
+            with PL.Error _ -> ()
             $$ LANGUAGE plocamlu;"#,
         )
         .expect("DO block failed");

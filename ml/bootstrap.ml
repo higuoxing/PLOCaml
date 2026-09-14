@@ -62,10 +62,12 @@ module Plocaml = struct
   module Log = struct
     external elog_record : log_level -> error_info -> unit = "plocaml_elog"
 
+    exception Error of error_info
+
     let report (level : log_level) ?detail ?hint ?sqlstate ?schema_name
         ?table_name ?column_name ?datatype_name ?constraint_name
         (message : string) : unit =
-      elog_record level
+      let info =
         {
           e_message = message;
           e_detail = detail;
@@ -77,6 +79,10 @@ module Plocaml = struct
           e_datatype_name = datatype_name;
           e_constraint_name = constraint_name;
         }
+      in
+      match level with
+      | Error -> raise (Error info)
+      | _ -> elog_record level info
 
     let debug ?detail ?hint ?sqlstate ?schema_name ?table_name ?column_name
         ?datatype_name ?constraint_name message =
@@ -106,7 +112,8 @@ module Plocaml = struct
     let error ?detail ?hint ?sqlstate ?schema_name ?table_name ?column_name
         ?datatype_name ?constraint_name message =
       report Error ?detail ?hint ?sqlstate ?schema_name ?table_name ?column_name
-        ?datatype_name ?constraint_name message
+        ?datatype_name ?constraint_name message;
+      failwith "PL.error"
 
     let elog (level : log_level) (message : string) : unit =
       report level message
@@ -140,7 +147,8 @@ module Plocaml = struct
         Hashtbl.add sd_map oid s;
         s
 
-  (* Datum accessors, matching the C-branch / PL/Python-style helpers. *)
+  (* Unwrap `datum` values and SD/GD entries. Arguments arrive as the
+     `datum` ADT, so user code needs a small conversion layer. *)
   let to_int_exn = function
     | Int x -> x
     | _ -> failwith "PL/OCaml: Expected Int"
@@ -171,11 +179,6 @@ module Plocaml = struct
   let to_bool_opt = function Bool x -> Some x | _ -> None
   let to_array_opt = function Array x -> Some x | _ -> None
   let to_record_opt = function Record x -> Some x | _ -> None
-
-  let field name = function
-    | Record fields -> List.assoc name fields
-    | _ -> failwith "PL/OCaml: Expected Record"
-
   let to_int ~default = function Int x -> x | _ -> default
   let to_float ~default = function Float x -> x | _ -> default
   let to_string ~default = function String x -> x | _ -> default
@@ -197,18 +200,6 @@ module Plocaml = struct
     | None ->
         failwith (Printf.sprintf "PL/OCaml: no GD/SD entry for key %S" key)
 
-  (* Ad-hoc parameterized execute, implemented via prepare + execute_plan. *)
-  let execute_with_args (query : string) (args : datum array) : spi_result =
-    let type_of = function
-      | Int _ -> "int8"
-      | Float _ -> "float8"
-      | String _ | Null -> "text"
-      | Bool _ -> "bool"
-      | Array _ | Record _ -> "text"
-    in
-    let types = Array.map type_of args in
-    SPI.execute_plan (SPI.prepare query types) args
-
   (* Direct convenience shortcuts on Plocaml / PL *)
   let execute = SPI.execute
   let prepare = SPI.prepare
@@ -229,6 +220,13 @@ module Plocaml = struct
   let quote_nullable = Quote.nullable
   let quote_ident = Quote.ident
   let get_sd = get_sd
+
+  exception Error = Log.Error
 end
 
 module PL = Plocaml
+
+let decode_error (exn : exn) =
+  match exn with PL.Error info -> Some info | _ -> None
+
+let () = Callback.register "plocaml_decode_error" decode_error

@@ -101,7 +101,7 @@ with Failure _ ->
   ignore (PL.execute_plan p [| PL.String "wrong" |])
 with Failure _ ->
   PL.warning "Caught a SPI error");
-PL.Null
+()
 $$ LANGUAGE plocamlu;
 
 SELECT subtransaction_mix_explicit_and_implicit();
@@ -119,7 +119,7 @@ PL.subtransaction (fun () ->
   with Failure _ ->
     PL.notice "caught"
 );
-PL.Null
+()
 $$ LANGUAGE plocamlu;
 
 SELECT try_catch_inside_subtransaction();
@@ -137,7 +137,7 @@ PL.subtransaction (fun () ->
   with Failure _ ->
     PL.notice "caught"
 );
-PL.Null
+()
 $$ LANGUAGE plocamlu;
 
 SELECT pk_violation_inside_subtransaction();

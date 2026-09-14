@@ -20,7 +20,7 @@ PL.info "This is message text."
 PL.notice ~detail:"some detail" "notice";
 PL.warning ~detail:"some detail" "warning";
 PL.error ~detail:"some detail" ~hint:"some hint" "stop on error";
-PL.Null
+()
 $$ LANGUAGE plocamlu;
 
 SELECT elog_test();
@@ -47,7 +47,7 @@ PL.error
   ?datatype_name:(PL.to_string_opt _datatype_name)
   ?constraint_name:(PL.to_string_opt _constraint_name)
   (PL.to_string_exn _message);
-PL.Null
+()
 $$ LANGUAGE plocamlu;
 
 SELECT raise_exception('hello', 'world');
