@@ -5,7 +5,7 @@
 //! `ERROR` lines, so they are executed via `pg_regress` against a dedicated
 //! database on the pgrx-managed test instance rather than `Spi::run`.
 
-use pgrx_pg_config::{PgConfig, Pgrx, SUPPORTED_VERSIONS};
+use pgrx_pg_config::{PgConfig, Pgrx};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -44,21 +44,36 @@ const REGRESS_XFAIL: &[&str] = &[
 
 const SQL_REGRESS_DB: &str = "plocamlu_sql_regress";
 
+fn pg_feature_label() -> &'static str {
+    if cfg!(feature = "pg13") {
+        "pg13"
+    } else if cfg!(feature = "pg14") {
+        "pg14"
+    } else if cfg!(feature = "pg15") {
+        "pg15"
+    } else if cfg!(feature = "pg16") {
+        "pg16"
+    } else if cfg!(feature = "pg17") {
+        "pg17"
+    } else if cfg!(feature = "pg18") {
+        "pg18"
+    } else if cfg!(feature = "pg19") {
+        "pg19"
+    } else {
+        panic!("no pgXX cargo feature is enabled; run via `cargo pgrx test --features pgNN`");
+    }
+}
+
 fn pg_config() -> PgConfig {
     if let Ok(cfg) = PgConfig::from_env() {
         return cfg;
     }
 
-    let pgrx = Pgrx::from_config().expect("failed to load pgrx configuration");
-    for pgver in SUPPORTED_VERSIONS() {
-        if std::env::var(format!("CARGO_FEATURE_PG{}", pgver.major)).is_ok() {
-            return pgrx
-                .get(&format!("pg{}", pgver.major))
-                .unwrap_or_else(|e| panic!("failed to get pg_config for pg{}: {e}", pgver.major));
-        }
-    }
-
-    panic!("no pgXX cargo feature is enabled; run via `cargo pgrx test --features pgNN pg_test`");
+    let label = pg_feature_label();
+    Pgrx::from_config()
+        .expect("failed to load pgrx configuration")
+        .get(label)
+        .unwrap_or_else(|e| panic!("failed to get pg_config for {label}: {e}"))
 }
 
 fn prepend_bindir_to_path(bindir: &Path) -> std::ffi::OsString {
