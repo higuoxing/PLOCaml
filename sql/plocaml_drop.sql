@@ -1,3 +1,4 @@
+-- Ported from PostgreSQL src/pl/plpython/sql/plpython_drop.sql (REL_16_STABLE).
 --
 -- For paranoia's sake, don't leave an untrusted language sitting around
 --

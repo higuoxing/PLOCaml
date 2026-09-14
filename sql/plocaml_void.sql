@@ -1,27 +1,25 @@
+-- Ported from PostgreSQL src/pl/plpython/sql/plpython_void.sql (REL_16_STABLE).
 --
 -- Tests for functions that return void
 --
 
 CREATE FUNCTION test_void_func1() RETURNS void AS $$
-  PL.Null
+let x = 10 in
+ignore x;
+PL.Null
 $$ LANGUAGE plocamlu;
 
--- illegal: can't return non-Null value in void-returning func
+-- illegal: can't return non-None value in void-returning func
 CREATE FUNCTION test_void_func2() RETURNS void AS $$
-  PL.Int 10
+PL.Int 10
 $$ LANGUAGE plocamlu;
 
 CREATE FUNCTION test_return_none() RETURNS int AS $$
-  PL.Null
+PL.Null
 $$ LANGUAGE plocamlu;
+
 
 -- Tests for functions returning void
 SELECT test_void_func1(), test_void_func1() IS NULL AS "is null";
-
 SELECT test_void_func2(); -- should fail
-
 SELECT test_return_none(), test_return_none() IS NULL AS "is null";
-
-DROP FUNCTION test_void_func1;
-DROP FUNCTION test_void_func2;
-DROP FUNCTION test_return_none;

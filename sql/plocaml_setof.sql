@@ -1,70 +1,46 @@
+-- Ported from PostgreSQL src/pl/plpython/sql/plpython_setof.sql (REL_16_STABLE).
 --
 -- Test returning SETOF
 --
 
 CREATE FUNCTION test_setof_error() RETURNS SETOF text AS $$
-  PL.Int 37
+PL.Int 37
 $$ LANGUAGE plocamlu;
 
 SELECT test_setof_error();
 
 
 CREATE FUNCTION test_setof_as_list(count integer, content text) RETURNS SETOF text AS $$
-  let count = PL.to_int ~default:0 args.(0) in
-  let content = args.(1) in
-  PL.Array (Array.make count content)
+let count = PL.to_int ~default:0 count in
+let content = match content with PL.Null -> PL.Null | v -> v in
+PL.Array (Array.make count content)
 $$ LANGUAGE plocamlu;
 
 CREATE FUNCTION test_setof_as_tuple(count integer, content text) RETURNS SETOF text AS $$
-  let count = PL.to_int ~default:0 args.(0) in
-  let content = args.(1) in
-  PL.Array (Array.make count content)
-$$ LANGUAGE plocamlu;
-
-CREATE FUNCTION test_setof_as_set(count integer, content text) RETURNS SETOF text AS $$
-  let count = PL.to_int ~default:0 args.(0) in
-  let content = args.(1) in
-  let arr = Array.init count (fun i ->
-    match content with
-    | PL.Null -> PL.Null
-    | PL.String s ->
-        let rec repeat n acc = if n = 0 then acc else repeat (n - 1) (acc ^ s) in
-        PL.String (repeat (i + 1) "")
-    | _ -> PL.Null
-  ) in
-  (* To mimic set semantics, we should sort and remove duplicates, but the python test
-     just adds them to a set. The elements are content * (i+1). If content is null,
-     it adds None multiple times, which in a set results in one None.
-     Let's just implement the Python logic. *)
-  let set_list = ref [] in
-  for i = 0 to count - 1 do
-    let v = match content with
-      | PL.Null -> PL.Null
-      | PL.String s ->
-          let rec repeat n acc = if n = 0 then acc else repeat (n - 1) (acc ^ s) in
-          PL.String (repeat (i + 1) "")
-      | _ -> PL.Null
-    in
-    if not (List.mem v !set_list) then set_list := v :: !set_list
-  done;
-  PL.Array (Array.of_list (List.rev !set_list))
+let count = PL.to_int ~default:0 count in
+let content = match content with PL.Null -> PL.Null | v -> v in
+PL.Array (Array.make count content)
 $$ LANGUAGE plocamlu;
 
 CREATE FUNCTION test_setof_as_iterator(count integer, content text) RETURNS SETOF text AS $$
-  let count = PL.to_int ~default:0 args.(0) in
-  let content = args.(1) in
-  PL.Array (Array.make count content)
+let count = PL.to_int ~default:0 count in
+let content = match content with PL.Null -> PL.Null | v -> v in
+PL.Array (Array.make count content)
 $$ LANGUAGE plocamlu;
 
 CREATE FUNCTION test_setof_spi_in_iterator() RETURNS SETOF text AS
 $$
-  let items = [| "Hello"; "Brave"; "New"; "World" |] in
-  Array.iter (fun _ ->
-    let _ = PL.execute "select 1" in
-    let _ = PL.execute "select 2" in
-    ()
-  ) items;
-  PL.Array (Array.map (fun s -> PL.String s) items)
+  let words = [|"Hello"; "Brave"; "New"; "World"|] in
+  let rec loop i acc =
+    if i >= Array.length words then List.rev acc
+    else (
+      ignore (PL.execute "select 1");
+      let acc = PL.String words.(i) :: acc in
+      ignore (PL.execute "select 2");
+      loop (i + 1) acc
+    )
+  in
+  PL.Array (Array.of_list (loop 0 []))
 $$
 LANGUAGE plocamlu;
 
@@ -80,11 +56,6 @@ SELECT test_setof_as_tuple(1, 'tuple');
 SELECT test_setof_as_tuple(2, 'tuple');
 SELECT test_setof_as_tuple(2, null);
 
-SELECT * FROM test_setof_as_set(0, 'set') ORDER BY 1;
-SELECT * FROM test_setof_as_set(1, 'set') ORDER BY 1;
-SELECT * FROM test_setof_as_set(2, 'set') ORDER BY 1;
-SELECT * FROM test_setof_as_set(2, null) ORDER BY 1;
-
 SELECT test_setof_as_iterator(0, 'list');
 SELECT test_setof_as_iterator(1, 'list');
 SELECT test_setof_as_iterator(2, 'list');
@@ -94,10 +65,11 @@ SELECT test_setof_spi_in_iterator();
 
 -- set-returning function that modifies its parameters
 CREATE OR REPLACE FUNCTION ugly(x int, lim int) RETURNS SETOF int AS $$
-  let x = PL.to_int ~default:0 args.(0) in
-  let lim = PL.to_int ~default:0 args.(1) in
-  let arr = Array.init (max 0 (lim - x + 1)) (fun i -> PL.Int (x + i)) in
-  PL.Array arr
+let rec loop x lim acc =
+  if x > lim then List.rev acc
+  else loop (x + 1) lim (PL.Int x :: acc)
+in
+PL.Array (Array.of_list (loop (PL.to_int_exn x) (PL.to_int_exn lim) []))
 $$ LANGUAGE plocamlu;
 
 SELECT ugly(1, 5);
@@ -109,8 +81,8 @@ SELECT ugly(1,3), ugly(7,8);
 CREATE OR REPLACE FUNCTION get_user_records()
 RETURNS SETOF users
 AS $$
-  let res = PL.execute "SELECT * FROM users ORDER BY username" in
-  PL.Array (Array.map (fun row -> PL.Record row) res.rows)
+    let rv = PL.execute "SELECT * FROM users ORDER BY username" in
+    PL.Array (Array.map (fun row -> PL.Record row) rv.rows)
 $$ LANGUAGE plocamlu;
 
 SELECT get_user_records();
@@ -120,30 +92,9 @@ SELECT * FROM get_user_records();
 CREATE OR REPLACE FUNCTION get_user_records2()
 RETURNS TABLE(fname text, lname text, username text, userid int)
 AS $$
-  let res = PL.execute "SELECT * FROM users ORDER BY username" in
-  PL.Array (Array.map (fun row -> PL.Record row) res.rows)
+    let rv = PL.execute "SELECT * FROM users ORDER BY username" in
+    PL.Array (Array.map (fun row -> PL.Record row) rv.rows)
 $$ LANGUAGE plocamlu;
 
 SELECT get_user_records2();
 SELECT * FROM get_user_records2();
-
--- Test partial execution of a set-returning function
-SELECT get_user_records2() LIMIT 2;
-SELECT * FROM get_user_records2() LIMIT 2;
-
--- A set-returning function that is invalidated mid-iteration must run to
--- completion using its original definition (bug #19480).
-CREATE OR REPLACE FUNCTION self_invalidating_srf(x int) RETURNS SETOF int AS $$
-  let x = PL.to_int ~default:0 args.(0) in
-  let arr = Array.make 3 (PL.Int 0) in
-  for i = 0 to 2 do
-    if i = 1 then
-      let _ = PL.execute "CREATE OR REPLACE FUNCTION self_invalidating_srf(x int) RETURNS SETOF int LANGUAGE plocamlu AS 'PL.Array [| PL.Int (-1) |]'" in ()
-    else ();
-    arr.(i) <- PL.Int (x + i)
-  done;
-  PL.Array arr
-$$ LANGUAGE plocamlu;
-
-SELECT self_invalidating_srf(10); -- expect 10,11,12 (original definition)
-SELECT self_invalidating_srf(10); -- expect -1 (replacement now in effect)

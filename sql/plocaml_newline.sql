@@ -1,3 +1,4 @@
+-- Ported from PostgreSQL src/pl/plpython/sql/plpython_newline.sql (REL_16_STABLE).
 --
 -- Universal Newline Support
 --
@@ -18,7 +19,3 @@ LANGUAGE plocamlu;
 SELECT newline_lf();
 SELECT newline_cr();
 SELECT newline_crlf();
-
-DROP FUNCTION newline_lf;
-DROP FUNCTION newline_cr;
-DROP FUNCTION newline_crlf;

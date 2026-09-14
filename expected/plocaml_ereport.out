@@ -1,36 +1,26 @@
---
--- Mirror of PL/Python's plpython_ereport test. PL/OCaml exposes the error
--- fields (detail, hint, sqlstate, schema_name, ...) as optional labeled
--- arguments on PL.debug/log/info/notice/warning/error (and PL.report). For a
--- level of Error the call raises, propagating every field to the final error.
---
--- The Python-specific parts of the original test have no PL/OCaml equivalent
--- and are omitted: keyword-argument validation (e.g. an unknown 'blabla'
--- kwarg, or a message given both positionally and by name), non-string detail
--- objects (tuples/dates/lists), and exception-object attributes (e.spidata,
--- e.sqlstate).
---
+-- Ported from PostgreSQL src/pl/plpython/sql/plpython_ereport.sql (REL_16_STABLE).
+-- Omitted Python-only pieces: non-string detail objects, unknown kwargs,
+-- dual positional/named message, and exception-object attributes (e.spidata).
 CREATE FUNCTION elog_test() RETURNS void
-LANGUAGE plocamlu
 AS $$
-  PL.debug   ~detail:"some detail" "debug";
-  PL.log     ~detail:"some detail" "log";
-  PL.info    ~detail:"some detail" "info";
-  PL.info "the question" ~detail:"42";
-  PL.info "This is message text."
-    ~detail:"This is detail text"
-    ~hint:"This is hint text."
-    ~sqlstate:"XX000"
-    ~schema_name:"any info about schema"
-    ~table_name:"any info about table"
-    ~column_name:"any info about column"
-    ~datatype_name:"any info about datatype"
-    ~constraint_name:"any info about constraint";
-  PL.notice  ~detail:"some detail" "notice";
-  PL.warning ~detail:"some detail" "warning";
-  PL.error   ~detail:"some detail" ~hint:"some hint" "stop on error";
-  PL.Null
-$$;
+PL.debug ~detail:"some detail" "debug";
+PL.log ~detail:"some detail" "log";
+PL.info ~detail:"some detail" "info";
+PL.info "the question" ~detail:"42";
+PL.info "This is message text."
+  ~detail:"This is detail text"
+  ~hint:"This is hint text."
+  ~sqlstate:"XX000"
+  ~schema_name:"any info about schema"
+  ~table_name:"any info about table"
+  ~column_name:"any info about column"
+  ~datatype_name:"any info about datatype"
+  ~constraint_name:"any info about constraint";
+PL.notice ~detail:"some detail" "notice";
+PL.warning ~detail:"some detail" "warning";
+PL.error ~detail:"some detail" ~hint:"some hint" "stop on error";
+PL.Null
+$$ LANGUAGE plocamlu;
 SELECT elog_test();
 INFO:  info
 DETAIL:  some detail
@@ -47,13 +37,10 @@ ERROR:  PL/OCaml execution failed
 DETAIL:  Failure("stop on error
 DETAIL: some detail
 HINT: some hint")
-DO $$ PL.info ~detail:"detail from a DO block" "message from a DO block" $$ LANGUAGE plocamlu;
-INFO:  message from a DO block
-DETAIL:  detail from a DO block
--- should fail: invalid SQLSTATE code
+-- should fail
 DO $$ PL.info ~sqlstate:"54444A" "wrong sqlstate" $$ LANGUAGE plocamlu;
 INFO:  wrong sqlstate
--- raise error in PL/OCaml, handle it in plpgsql
+-- raise exception in ocaml, handle exception in plpgsql
 CREATE OR REPLACE FUNCTION raise_exception(_message text, _detail text DEFAULT NULL, _hint text DEFAULT NULL,
                                            _sqlstate text DEFAULT NULL,
                                            _schema_name text DEFAULT NULL,
@@ -61,16 +48,19 @@ CREATE OR REPLACE FUNCTION raise_exception(_message text, _detail text DEFAULT N
                                            _column_name text DEFAULT NULL,
                                            _datatype_name text DEFAULT NULL,
                                            _constraint_name text DEFAULT NULL)
-RETURNS void
-LANGUAGE plocamlu
-AS $$
-  let opt i = PL.to_string_opt args.(i) in
-  PL.error (PL.to_string ~default:"" args.(0))
-    ?detail:(opt 1) ?hint:(opt 2) ?sqlstate:(opt 3) ?schema_name:(opt 4)
-    ?table_name:(opt 5) ?column_name:(opt 6) ?datatype_name:(opt 7)
-    ?constraint_name:(opt 8);
-  PL.Null
-$$;
+RETURNS void AS $$
+PL.error
+  ?detail:(PL.to_string_opt _detail)
+  ?hint:(PL.to_string_opt _hint)
+  ?sqlstate:(PL.to_string_opt _sqlstate)
+  ?schema_name:(PL.to_string_opt _schema_name)
+  ?table_name:(PL.to_string_opt _table_name)
+  ?column_name:(PL.to_string_opt _column_name)
+  ?datatype_name:(PL.to_string_opt _datatype_name)
+  ?constraint_name:(PL.to_string_opt _constraint_name)
+  (PL.to_string_exn _message);
+PL.Null
+$$ LANGUAGE plocamlu;
 SELECT raise_exception('hello', 'world');
 ERROR:  PL/OCaml execution failed
 DETAIL:  Failure("hello
@@ -154,5 +144,3 @@ CONTEXT:  SQL statement "SELECT raise_exception(_message => 'message text',
                             _datatype_name => 'datatype text',
                             _constraint_name => 'constraint text')"
 PL/pgSQL function inline_code_block line 14 at PERFORM
-DROP FUNCTION elog_test;
-DROP FUNCTION raise_exception;

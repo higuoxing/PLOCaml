@@ -1,3 +1,5 @@
+-- Ported from PostgreSQL src/pl/plpython/sql/plpython_populate.sql (REL_16_STABLE).
+
 INSERT INTO users (fname, lname, username) VALUES ('jane', 'doe', 'j_doe');
 INSERT INTO users (fname, lname, username) VALUES ('john', 'doe', 'johnd');
 INSERT INTO users (fname, lname, username) VALUES ('willem', 'doe', 'w_doe');

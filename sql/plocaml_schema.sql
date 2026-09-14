@@ -1,3 +1,5 @@
+-- Ported from PostgreSQL src/pl/plpython/sql/plpython_schema.sql (REL_16_STABLE).
+
 CREATE TABLE users (
 	fname text not null,
 	lname text not null,

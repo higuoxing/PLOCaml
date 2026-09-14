@@ -1,3 +1,4 @@
+-- Ported from PostgreSQL src/pl/plpython/sql/plpython_record.sql (REL_16_STABLE).
 --
 -- Test returning tuples
 --
@@ -14,49 +15,48 @@ CREATE TYPE type_record AS (
 
 
 CREATE FUNCTION test_table_record_as(typ text, first text, second integer, retnull boolean) RETURNS table_record AS $$
-  let retnull = PL.to_bool_exn retnull in
-  if retnull then PL.Null
-  else
-    let typ = PL.to_string_exn typ in
-    match typ with
-    | "dict" ->
-        PL.Record [ "first", first; "second", second; "additionalfield", PL.String "must not cause trouble" ]
-    | "tuple" | "list" ->
-        PL.Array [| first; second |]
-    | _ -> failwith "unsupported typ"
+if PL.to_bool ~default:false retnull then PL.Null
+else
+  let first = match first with PL.Null -> PL.Null | v -> v in
+  let second = match second with PL.Null -> PL.Null | v -> v in
+  match PL.to_string_exn typ with
+  | "dict" | "obj" ->
+      PL.Record [("first", first); ("second", second); ("additionalfield", PL.String "must not cause trouble")]
+  | "tuple" | "list" ->
+      PL.Array [| first; second |]
+  | _ -> failwith "unrecognized typ"
 $$ LANGUAGE plocamlu;
 
 CREATE FUNCTION test_type_record_as(typ text, first text, second integer, retnull boolean) RETURNS type_record AS $$
-  let retnull = PL.to_bool_exn retnull in
-  if retnull then PL.Null
-  else
-    let typ = PL.to_string_exn typ in
-    match typ with
-    | "dict" ->
-        PL.Record [ "first", first; "second", second; "additionalfield", PL.String "must not cause trouble" ]
-    | "tuple" | "list" ->
-        PL.Array [| first; second |]
-    | "str" ->
-        let f = PL.to_string ~default:"None" first in
-        let s = match PL.to_int_opt second with Some x -> string_of_int x | None -> "None" in
-        PL.String (Printf.sprintf "(%s,%s)" f s)
-    | _ -> failwith "unsupported typ"
+if PL.to_bool ~default:false retnull then PL.Null
+else
+  let first = match first with PL.Null -> PL.Null | v -> v in
+  let second = match second with PL.Null -> PL.Null | v -> v in
+  match PL.to_string_exn typ with
+  | "dict" | "obj" ->
+      PL.Record [("first", first); ("second", second); ("additionalfield", PL.String "must not cause trouble")]
+  | "tuple" | "list" ->
+      PL.Array [| first; second |]
+  | "str" ->
+      let f = match first with PL.String s -> s | PL.Null -> "" | _ -> "?" in
+      let s = match second with PL.Int i -> string_of_int i | PL.Null -> "None" | _ -> "?" in
+      PL.String (Printf.sprintf "('%s',%s)" f s)
+  | _ -> failwith "unrecognized typ"
 $$ LANGUAGE plocamlu;
 
 CREATE FUNCTION test_in_out_params(first in text, second out text) AS $$
-  let f = PL.to_string_exn first in
-  PL.String (f ^ "_in_to_out")
+PL.String (PL.to_string_exn first ^ "_in_to_out")
 $$ LANGUAGE plocamlu;
 
 CREATE FUNCTION test_in_out_params_multi(first in text,
                                          second out text, third out text) AS $$
-  let f = PL.to_string_exn first in
-  PL.Array [| PL.String (f ^ "_record_in_to_out_1"); PL.String (f ^ "_record_in_to_out_2") |]
+let first = PL.to_string_exn first in
+PL.Array [| PL.String (first ^ "_record_in_to_out_1");
+            PL.String (first ^ "_record_in_to_out_2") |]
 $$ LANGUAGE plocamlu;
 
 CREATE FUNCTION test_inout_params(first inout text) AS $$
-  let f = PL.to_string_exn first in
-  PL.String (f ^ "_inout")
+PL.String (PL.to_string_exn first ^ "_inout")
 $$ LANGUAGE plocamlu;
 
 
@@ -79,6 +79,12 @@ SELECT * FROM test_table_record_as('list', null, 2, false);
 SELECT * FROM test_table_record_as('list', 'three', 3, false);
 SELECT * FROM test_table_record_as('list', null, null, true);
 
+SELECT * FROM test_table_record_as('obj', null, null, false);
+SELECT * FROM test_table_record_as('obj', 'one', null, false);
+SELECT * FROM test_table_record_as('obj', null, 2, false);
+SELECT * FROM test_table_record_as('obj', 'three', 3, false);
+SELECT * FROM test_table_record_as('obj', null, null, true);
+
 SELECT * FROM test_type_record_as('dict', null, null, false);
 SELECT * FROM test_type_record_as('dict', 'one', null, false);
 SELECT * FROM test_type_record_as('dict', null, 2, false);
@@ -97,6 +103,12 @@ SELECT * FROM test_type_record_as('list', null, 2, false);
 SELECT * FROM test_type_record_as('list', 'three', 3, false);
 SELECT * FROM test_type_record_as('list', null, null, true);
 
+SELECT * FROM test_type_record_as('obj', null, null, false);
+SELECT * FROM test_type_record_as('obj', 'one', null, false);
+SELECT * FROM test_type_record_as('obj', null, 2, false);
+SELECT * FROM test_type_record_as('obj', 'three', 3, false);
+SELECT * FROM test_type_record_as('obj', null, null, true);
+
 SELECT * FROM test_type_record_as('str', 'one', 1, false);
 
 SELECT * FROM test_in_out_params('test_in');
@@ -110,19 +122,19 @@ ALTER TABLE table_record DROP COLUMN second;
 ALTER TABLE table_record ADD COLUMN first text;
 ALTER TABLE table_record ADD COLUMN second int4;
 
-SELECT * FROM test_table_record_as('dict', 'one', 1, false);
+SELECT * FROM test_table_record_as('obj', 'one', 1, false);
 
 ALTER TYPE type_record DROP ATTRIBUTE first;
 ALTER TYPE type_record DROP ATTRIBUTE second;
 ALTER TYPE type_record ADD ATTRIBUTE first text;
 ALTER TYPE type_record ADD ATTRIBUTE second int4;
 
-SELECT * FROM test_type_record_as('dict', 'one', 1, false);
+SELECT * FROM test_type_record_as('obj', 'one', 1, false);
 
 -- errors cases
 
 CREATE FUNCTION test_type_record_error1() RETURNS type_record AS $$
-    PL.Record [ "first", PL.String "first" ]
+    PL.Record [("first", PL.String "first")]
 $$ LANGUAGE plocamlu;
 
 SELECT * FROM test_type_record_error1();
@@ -136,7 +148,7 @@ SELECT * FROM test_type_record_error2();
 
 
 CREATE FUNCTION test_type_record_error3() RETURNS type_record AS $$
-    PL.Record [ "first", PL.String "first" ]
+    PL.Record [("first", PL.String "first")]
 $$ LANGUAGE plocamlu;
 
 SELECT * FROM test_type_record_error3();

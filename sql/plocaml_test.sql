@@ -1,3 +1,4 @@
+-- Ported from PostgreSQL src/pl/plpython/sql/plpython_test.sql (REL_16_STABLE).
 -- first some tests of basic functionality
 
 -- really stupid function just to get the module loaded
@@ -17,43 +18,49 @@ select stupidn();
 -- test multiple arguments and odd characters in function name
 CREATE FUNCTION "Argument test #1"(u users, a1 text, a2 text) RETURNS text
 	AS $$
-  let u = PL.to_record_exn args.(0) in
-  let a1 = PL.to_string_exn args.(1) in
-  let a2 = PL.to_string_exn args.(2) in
-  let sorted_keys = List.sort (fun (k1, _) (k2, _) -> String.compare k1 k2) u in
-  let format_val v = match v with
+  let u = PL.to_record_exn u in
+  let a1 = PL.to_string_exn a1 in
+  let a2 = PL.to_string_exn a2 in
+  let keys = List.sort (fun (k1, _) (k2, _) -> String.compare k1 k2) u in
+  let format_val = function
     | PL.String s -> s
     | PL.Int i -> string_of_int i
     | PL.Null -> "None"
+    | PL.Bool b -> string_of_bool b
+    | PL.Float f -> string_of_float f
     | _ -> "unknown"
   in
-  let formatted = List.map (fun (k, v) -> Printf.sprintf "%s: %s" k (format_val v)) sorted_keys in
-  let out = String.concat ", " formatted in
-  PL.String (Printf.sprintf "%s %s => {%s}" a1 a2 out)
+  let out = List.map (fun (k, v) -> Printf.sprintf "%s: %s" k (format_val v)) keys in
+  PL.String (a1 ^ " " ^ a2 ^ " => {" ^ String.concat ", " out ^ "}")
 $$ LANGUAGE plocamlu;
 
 select "Argument test #1"(users, fname, lname) from users where lname = 'doe' order by 1;
 
--- check module contents
+
+-- check module contents (dir(plpy) analog: names exported by module PL)
 CREATE FUNCTION module_contents() RETURNS SETOF text AS
 $$
-  let contents = [
-    "Array"; "Bool"; "Debug1"; "Debug2"; "Debug3"; "Debug4"; "Debug5";
-    "Error"; "Float"; "Info"; "Int"; "Log"; "Notice"; "Null"; "Record";
-    "String"; "Warning"; "close"; "cursor"; "cursor_plan"; "debug"; "elog";
-    "error"; "execute"; "execute_plan"; "execute_with_args"; "fetch"; "field";
-    "gd"; "get"; "get_opt"; "get_sd"; "info"; "log"; "log_level_to_int";
-    "notice"; "prepare"; "quote_ident"; "quote_literal"; "quote_nullable";
-    "report"; "set"; "to_array"; "to_array_exn"; "to_array_opt"; "to_bool";
-    "to_bool_exn"; "to_bool_opt"; "to_float"; "to_float_exn"; "to_float_opt";
-    "to_int"; "to_int_exn"; "to_int_opt"; "to_record_exn"; "to_record_opt";
-    "to_string"; "to_string_exn"; "to_string_opt"; "warning"
-  ] in
-  let arr = Array.of_list (List.map (fun s -> PL.String s) contents) in
-  PL.Array arr
+  let env = !Toploop.toplevel_env in
+  let (_, md) = Env.lookup_module ~loc:Location.none (Longident.Lident "PL") env in
+  let names = ref [] in
+  let rec get_names mty =
+    match mty with
+    | Types.Mty_signature s ->
+        List.iter (fun item ->
+          match item with
+          | Types.Sig_value (id, _, _) -> names := Ident.name id :: !names
+          | Types.Sig_type (id, _, _, _) -> names := Ident.name id :: !names
+          | Types.Sig_module (id, _, _, _, _) -> names := Ident.name id :: !names
+          | _ -> ()
+        ) s
+    | _ -> ()
+  in
+  get_names md.Types.md_type;
+  let sorted = List.sort String.compare !names in
+  PL.Array (Array.of_list (List.map (fun s -> PL.String s) sorted))
 $$ LANGUAGE plocamlu;
 
-select * from module_contents();
+select module_contents();
 
 CREATE FUNCTION elog_test_basic() RETURNS void
 AS $$

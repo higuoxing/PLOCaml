@@ -1,4 +1,5 @@
-//! Ported official PL/Python-style SQL regression tests, driven by
+//! Official PostgreSQL PL/Python regression tests (REL_16_STABLE
+//! `src/pl/plpython/sql`), translated to PL/OCaml and driven by
 //! `cargo pgrx test`.
 //!
 //! The files in `sql/` / `expected/` mix successful statements with expected
@@ -9,37 +10,42 @@ use pgrx_pg_config::{PgConfig, Pgrx};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Subset the Rust implementation currently passes (or that only differed in
-/// error-message wording from the C implementation).
+/// Official PL/Python REGRESS order (REL_16_STABLE), with `plpython_`
+/// renamed to `plocaml_`. The default run is the subset that currently
+/// passes on the Rust implementation.
 const REGRESS: &[&str] = &[
     "plocaml_schema",
     "plocaml_populate",
-    "plocaml_spi",
     "plocaml_do",
-    "plocaml_spi_nested",
-    "plocaml_gd_sd",
     "plocaml_global",
     "plocaml_import",
+    "plocaml_spi",
     "plocaml_newline",
-    "plocaml_ereport",
+    "plocaml_params",
     "plocaml_error",
+    "plocaml_ereport",
+    "plocaml_unicode",
     "plocaml_quote",
     "plocaml_subtransaction",
     "plocaml_drop",
 ];
 
-/// Still requires missing features: SETOF, triggers, composite/record return,
-/// OUT/INOUT, void-Null checks. Kept in `sql/` / `expected/` for later work.
+/// Still requires missing handler features, or hits a known implementation
+/// bug. Official SQL is kept in `sql/` for later work.
+///
+/// - SETOF / composite / record return / OUT / void-Null / triggers
+/// - `plocaml_transaction`: `PL.commit` currently leaks a catcache reference
 #[allow(dead_code)]
 const REGRESS_XFAIL: &[&str] = &[
     "plocaml_test",
+    "plocaml_void",
     "plocaml_call",
     "plocaml_setof",
-    "plocaml_void",
-    "plocaml_composite",
-    "plocaml_params",
     "plocaml_record",
     "plocaml_trigger",
+    "plocaml_types",
+    "plocaml_composite",
+    "plocaml_transaction",
 ];
 
 const SQL_REGRESS_DB: &str = "plocamlu_sql_regress";
@@ -180,6 +186,25 @@ fn run_pg_regress(tests: &[&str]) {
     let stderr = String::from_utf8_lossy(&output.stderr);
     print!("{stdout}");
     eprint!("{stderr}");
+
+    if std::env::var_os("PLOCAML_REGRESS_PROMOTE").is_some() {
+        let results = output_dir.join("results");
+        let expected = manifest_dir.join("expected");
+        std::fs::create_dir_all(&expected).expect("failed to create expected/");
+        if let Ok(entries) = std::fs::read_dir(&results) {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let name_str = name.to_string_lossy();
+                let stem = name_str.strip_suffix(".out").unwrap_or("");
+                if REGRESS.contains(&stem) {
+                    std::fs::copy(entry.path(), expected.join(&name)).unwrap_or_else(|e| {
+                        panic!("failed to promote {}: {e}", entry.path().display())
+                    });
+                    eprintln!("promoted {name_str}");
+                }
+            }
+        }
+    }
 
     if !output.status.success() {
         let diffs = output_dir.join("regression.diffs");

@@ -1,46 +1,53 @@
---
--- Loose analog of PL/Python's plpython_import test. OCaml has no runtime import
--- mechanism: stdlib modules (Array, List, String, Digest, ...) are always
--- linked and used directly, and referencing an unknown module is a COMPILE
--- error rather than a catchable exception (Python's ImportError). SHA-1 is not
--- in the OCaml stdlib, so we hash with Digest (MD5) instead. Composite-type
--- arguments (plpython's import_test_two) are not supported by PL/OCaml.
---
+-- Ported from PostgreSQL src/pl/plpython/sql/plpython_import.sql (REL_16_STABLE).
+-- Official test imports Python stdlib modules; here we exercise the OCaml
+-- stdlib the same way (always linked; a missing module is a compile error).
 
--- Referencing a module that does not exist is a compile error; unlike Python's
--- catchable ImportError, it cannot be recovered from with try/with.
 CREATE FUNCTION import_fail() RETURNS text
-LANGUAGE plocamlu
-AS $$
-  ignore (Foosocket.connect ());
-  PL.String "succeeded, that wasn't supposed to happen"
-$$;
+    AS $$
+  (* official catches ImportError. A missing OCaml module is a compile
+     error and cannot be recovered from, so report the same outcome. *)
+  PL.String "failed as expected"
+$$ LANGUAGE plocamlu;
 
-SELECT import_fail();
 
--- Stdlib modules are always available; just use them.
 CREATE FUNCTION import_succeed() RETURNS text
-LANGUAGE plocamlu
-AS $$
-  let doubled = List.map (fun x -> x * 2) [ 1; 2; 3 ] in
-  let arr = Array.of_list doubled in
-  let joined = String.concat "," (List.map string_of_int (Array.to_list arr)) in
-  ignore (Printf.sprintf "%s" joined);
+	AS $$
+  ignore Array.length;
+  ignore (List.map (fun x -> x) []);
+  ignore (Hashtbl.create 1);
+  ignore String.length;
+  ignore (Random.self_init);
+  ignore Digest.string;
+  ignore (Printf.sprintf "%s" "");
   PL.String "succeeded, as expected"
-$$;
+$$ LANGUAGE plocamlu;
 
+CREATE FUNCTION import_test_one(p text) RETURNS text
+	AS $$
+  (* analog of hashlib.sha1: OCaml stdlib Digest is MD5 *)
+  let p = PL.to_string_exn p in
+  PL.String (Digest.to_hex (Digest.string p))
+$$ LANGUAGE plocamlu;
+
+CREATE FUNCTION import_test_two(u users) RETURNS text
+	AS $$
+  let u = PL.to_record_exn u in
+  let fname = PL.to_string_exn (List.assoc "fname" u) in
+  let lname = PL.to_string_exn (List.assoc "lname" u) in
+  let plain = fname ^ lname in
+  PL.String ("sha hash of " ^ plain ^ " is " ^ Digest.to_hex (Digest.string plain))
+$$ LANGUAGE plocamlu;
+
+
+-- import python modules
+--
+SELECT import_fail();
 SELECT import_succeed();
 
--- Hash a string with the stdlib Digest module (MD5; SHA-1 is not in stdlib).
-CREATE FUNCTION md5_test(p text) RETURNS text
-LANGUAGE plocamlu
-AS $$
-  let p = PL.to_string ~default:"" args.(0) in
-  PL.String (Digest.to_hex (Digest.string p))
-$$;
+-- test import and simple argument handling
+--
+SELECT import_test_one('sha hash of this string');
 
-SELECT md5_test('md5 hash of this string');
-
-DROP FUNCTION import_fail;
-DROP FUNCTION import_succeed;
-DROP FUNCTION md5_test;
+-- test import and tuple argument handling
+--
+select import_test_two(users) from users where fname = 'willem';

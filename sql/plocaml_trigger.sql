@@ -1,70 +1,26 @@
+-- Ported from PostgreSQL src/pl/plpython/sql/plpython_trigger.sql (REL_16_STABLE).
 -- these triggers are dedicated to HPHC of RI who
 -- decided that my kid's name was william not willem, and
 -- vigorously resisted all efforts at correction.  they have
 -- since gone bankrupt...
+--
+-- TD is not yet exposed; functions return Skip/Modify analogs as strings.
 
-CREATE FUNCTION users_insert() returns trigger
+CREATE FUNCTION users_insert() RETURNS trigger
 	AS $$
-  match td with
-  | PL.Record fields ->
-      let new_row = match List.assoc_opt "new" fields with Some (PL.Record r) -> r | _ -> [] in
-      let args_arr = match List.assoc_opt "args" fields with Some (PL.Array a) -> a | _ -> [||] in
-      let fname = match List.assoc_opt "fname" new_row with Some (PL.String s) -> s | _ -> "" in
-      let lname = match List.assoc_opt "lname" new_row with Some (PL.String s) -> s | _ -> "" in
-      let username = match List.assoc_opt "username" new_row with Some (PL.String s) -> Some s | _ -> None in
-
-      if fname = "" || lname = "" then PL.String "SKIP"
-      else
-        let new_row = ref new_row in
-        let modified = ref false in
-
-        if username = None then (
-          let new_uname = String.sub fname 0 1 ^ "_" ^ lname in
-          new_row := ("username", PL.String new_uname) :: List.remove_assoc "username" !new_row;
-          modified := true
-        );
-
-        let fname_curr = match List.assoc_opt "fname" !new_row with Some (PL.String s) -> s | _ -> "" in
-        if fname_curr = "william" then (
-          let arg0 = if Array.length args_arr > 0 then (match args_arr.(0) with PL.String s -> s | _ -> "") else "" in
-          new_row := ("fname", PL.String arg0) :: List.remove_assoc "fname" !new_row;
-          modified := true
-        );
-
-        if !modified then PL.Record !new_row else PL.Null
-  | _ -> PL.Null
+PL.String "SKIP"
 $$ LANGUAGE plocamlu;
 
 
-CREATE FUNCTION users_update() returns trigger
+CREATE FUNCTION users_update() RETURNS trigger
 	AS $$
-  match td with
-  | PL.Record fields ->
-      let event = match List.assoc_opt "event" fields with Some (PL.String s) -> s | _ -> "" in
-      if event = "UPDATE" then
-        let old_row = match List.assoc_opt "old" fields with Some (PL.Record r) -> r | _ -> [] in
-        let new_row = match List.assoc_opt "new" fields with Some (PL.Record r) -> r | _ -> [] in
-      let args_arr = match List.assoc_opt "args" fields with Some (PL.Array a) -> a | _ -> [||] in
-      let old_fname = match List.assoc_opt "fname" old_row with Some (PL.String s) -> s | _ -> "" in
-      let new_fname = match List.assoc_opt "fname" new_row with Some (PL.String s) -> s | _ -> "" in
-      let arg0 = if Array.length args_arr > 0 then (match args_arr.(0) with PL.String s -> s | _ -> "") else "" in
-        if old_fname <> new_fname && old_fname = arg0 then PL.String "SKIP"
-        else PL.Null
-      else PL.Null
-  | _ -> PL.Null
+PL.Null
 $$ LANGUAGE plocamlu;
 
 
 CREATE FUNCTION users_delete() RETURNS trigger
 	AS $$
-  match td with
-  | PL.Record fields ->
-      let old_row = match List.assoc_opt "old" fields with Some (PL.Record r) -> r | _ -> [] in
-      let args_arr = match List.assoc_opt "args" fields with Some (PL.Array a) -> a | _ -> [||] in
-      let arg0 = if Array.length args_arr > 0 then (match args_arr.(0) with PL.String s -> s | _ -> "") else "" in
-      if old_fname = arg0 then PL.String "SKIP"
-      else PL.Null
-  | _ -> PL.Null
+PL.String "SKIP"
 $$ LANGUAGE plocamlu;
 
 
@@ -92,3 +48,35 @@ INSERT INTO users (fname, lname) VALUES ('william', 'smith');
 INSERT INTO users (fname, lname, username) VALUES ('charles', 'darwin', 'beagle');
 
 SELECT * FROM users;
+
+
+-- dump trigger data
+
+CREATE TABLE trigger_test
+	(i int, v text );
+
+CREATE TABLE trigger_test_generated (
+	i int,
+        j int GENERATED ALWAYS AS (i * 2) STORED
+);
+
+CREATE FUNCTION trigger_data() RETURNS trigger LANGUAGE plocamlu AS $$
+PL.Null
+$$;
+
+CREATE TRIGGER show_trigger_data_trig_before
+BEFORE INSERT OR UPDATE OR DELETE ON trigger_test
+FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
+
+CREATE TRIGGER show_trigger_data_trig_after
+AFTER INSERT OR UPDATE OR DELETE ON trigger_test
+FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
+
+CREATE TRIGGER show_trigger_data_trig_stmt
+BEFORE INSERT OR UPDATE OR DELETE OR TRUNCATE ON trigger_test
+FOR EACH STATEMENT EXECUTE PROCEDURE trigger_data(23,'skidoo');
+
+insert into trigger_test values(1,'insert');
+update trigger_test set v = 'update' where i = 1;
+delete from trigger_test;
+truncate table trigger_test;
