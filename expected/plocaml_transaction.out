@@ -51,8 +51,7 @@ done;
 PL.Int 1
 $$;
 SELECT transaction_test2();
-ERROR:  PL/OCaml execution failed
-DETAIL:  invalid transaction termination
+ERROR:  invalid transaction termination
 SELECT * FROM test1;
  a | b 
 ---+---
@@ -66,8 +65,7 @@ ignore (PL.execute "CALL transaction_test1()");
 PL.Int 1
 $$;
 SELECT transaction_test3();
-ERROR:  PL/OCaml execution failed
-DETAIL:  PL/OCaml execution failed
+ERROR:  invalid transaction termination
 SELECT * FROM test1;
  a | b 
 ---+---
@@ -81,14 +79,12 @@ ignore (PL.execute "DO LANGUAGE plocamlu $x$ PL.commit () $x$");
 PL.Int 1
 $$;
 SELECT transaction_test4();
-ERROR:  PL/OCaml execution failed
-DETAIL:  PL/OCaml execution failed
+ERROR:  invalid transaction termination
 -- commit inside subtransaction (prohibited)
 DO LANGUAGE plocamlu $$
 PL.subtransaction (fun () -> PL.commit ())
 $$;
-ERROR:  PL/OCaml execution failed
-DETAIL:  cannot commit while a subtransaction is active
+ERROR:  cannot commit while a subtransaction is active
 -- commit inside cursor loop
 CREATE TABLE test2 (x int);
 INSERT INTO test2 VALUES (0), (1), (2), (3), (4);
@@ -139,8 +135,7 @@ let rec loop () =
 in
 loop ()
 $$;
-ERROR:  PL/OCaml execution failed
-DETAIL:  division by zero
+ERROR:  division by zero
 SELECT * FROM test1;
   a  | b 
 -----+---
@@ -216,8 +211,7 @@ ignore (PL.execute "INSERT INTO testfk VALUES (0)");
 PL.commit ();
 PL.warning "should not get here"
 $$;
-ERROR:  PL/OCaml execution failed
-DETAIL:  insert or update on table "testfk" violates foreign key constraint "testfk_f1_fkey"
+ERROR:  insert or update on table "testfk" violates foreign key constraint "testfk_f1_fkey"
 SELECT * FROM testpk;
  id 
 ----

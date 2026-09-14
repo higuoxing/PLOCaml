@@ -45,8 +45,7 @@ SELECT * FROM unicode_test;
 (0 rows)
 
 SELECT unicode_plan1();
-ERROR:  PL/OCaml execution failed
-DETAIL:  Invalid UTF-8: Utf8Error { valid_up_to: 0, error_len: Some(1) }
+ERROR:  Invalid UTF-8: Utf8Error { valid_up_to: 0, error_len: Some(1) }
 SELECT unicode_plan2();
  unicode_plan2 
 ---------------

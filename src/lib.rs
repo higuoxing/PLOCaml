@@ -58,7 +58,7 @@ mod tests {
         Spi::run("DO $$ let x = 1 + 2 in ();; () $$ LANGUAGE plocamlu;").expect("DO block failed");
     }
 
-    #[pg_test(error = "PL/OCaml execution failed")]
+    #[pg_test(error = "some error")]
     fn test_ocaml_failwith_bridging() {
         Spi::run("DO $$ failwith \"some error\" $$ LANGUAGE plocamlu;").expect("DO block failed");
     }
@@ -77,7 +77,7 @@ mod tests {
         .expect("DO block failed");
     }
 
-    #[pg_test(error = "PL/OCaml execution failed")]
+    #[pg_test(error = "uncaught error")]
     fn test_subtransaction_uncaught() {
         Spi::run(
             "DO $$ PL.subtransaction (fun () -> failwith \"uncaught error\") $$ LANGUAGE plocamlu;",
@@ -301,7 +301,7 @@ mod tests {
         .expect("DO block failed");
     }
 
-    #[pg_test(error = "PL/OCaml execution failed")]
+    #[pg_test(error = "PL/OCaml: incorrect number of arguments for plan (expected 1, got 2)")]
     fn test_spi_execute_plan_wrong_args_count() {
         Spi::run(
             r#"DO $$
@@ -313,12 +313,12 @@ mod tests {
         .expect("DO block failed");
     }
 
-    #[pg_test(error = "PL/OCaml execution failed")]
+    #[pg_test(error = "invalid transaction termination")]
     fn test_commit_in_atomic_context_fails() {
         Spi::run("DO $$ PL.commit () $$ LANGUAGE plocamlu;").expect("DO block failed");
     }
 
-    #[pg_test(error = "PL/OCaml execution failed")]
+    #[pg_test(error = "invalid transaction termination")]
     fn test_rollback_in_atomic_context_fails() {
         Spi::run("DO $$ PL.rollback () $$ LANGUAGE plocamlu;").expect("DO block failed");
     }
@@ -335,7 +335,7 @@ mod tests {
         .expect("DO block failed");
     }
 
-    #[pg_test(error = "PL/OCaml execution failed")]
+    #[pg_test(error = "invalid transaction termination")]
     fn test_commit_inside_subtransaction_fails() {
         Spi::run(
             r#"DO $$
@@ -535,7 +535,7 @@ mod tests {
         .expect("DO block failed");
     }
 
-    #[pg_test(error = "PL/OCaml execution failed")]
+    #[pg_test(error = "PL/OCaml: cursor is closed")]
     fn test_spi_cursor_fetch_after_close_fails() {
         Spi::run(
             r#"DO $$
@@ -824,7 +824,7 @@ mod tests {
         assert_eq!(res_table, 20);
     }
 
-    #[pg_test(error = "PL/OCaml execution failed")]
+    #[pg_test(error = "intentional function error")]
     fn test_call_handler_error_fails() {
         Spi::run(
             r#"

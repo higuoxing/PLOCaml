@@ -22,8 +22,7 @@ SELECT test_void_func1(), test_void_func1() IS NULL AS "is null";
 (1 row)
 
 SELECT test_void_func2(); -- should fail
-ERROR:  PL/OCaml execution failed
-DETAIL:  PL/OCaml function with return type "void" did not return ()
+ERROR:  PL/OCaml function with return type "void" did not return ()
 SELECT test_return_none(), test_return_none() IS NULL AS "is null";
  test_return_none | is null 
 ------------------+---------

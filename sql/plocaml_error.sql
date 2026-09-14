@@ -281,7 +281,7 @@ SELECT manual_subxact_prepared();
 /* test the context stack trace for nested execution levels
  */
 CREATE FUNCTION notice_innerfunc() RETURNS int AS $$
-ignore (PL.execute "DO LANGUAGE plocamlu $x$ PL.notice 'inside DO' $x$");
+ignore (PL.execute "DO LANGUAGE plocamlu $x$ PL.notice \"inside DO\" $x$");
 PL.Int 1
 $$ LANGUAGE plocamlu;
 

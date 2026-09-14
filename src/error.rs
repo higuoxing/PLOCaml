@@ -314,18 +314,23 @@ pub(crate) fn raise_postgres_error(info: ErrorInfo) -> ! {
 }
 
 /// Report a generic uncaught OCaml exception as a PostgreSQL error.
+///
+/// The inner message is the ERROR text (same as `PL.error` / PL/Python),
+/// not a `PL/OCaml execution failed` wrapper with the real text in DETAIL.
 pub(crate) fn raise_ocaml_error(err: OcamlError) -> ! {
     match err {
         OcamlError::Postgres(info) => raise_postgres_error(info),
-        OcamlError::Other(detail) => {
-            let detail = unwrap_ocaml_exception_message(&detail);
-            ereport!(
-                ERROR,
-                PgSqlErrorCode::ERRCODE_EXTERNAL_ROUTINE_EXCEPTION,
-                "PL/OCaml execution failed",
-                detail
-            );
-        }
+        OcamlError::Other(detail) => raise_postgres_error(ErrorInfo {
+            message: unwrap_ocaml_exception_message(&detail),
+            detail: None,
+            hint: None,
+            sqlstate: None,
+            schema_name: None,
+            table_name: None,
+            column_name: None,
+            datatype_name: None,
+            constraint_name: None,
+        }),
     }
 }
 
