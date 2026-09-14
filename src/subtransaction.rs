@@ -38,6 +38,9 @@ pub unsafe extern "C" fn plocaml_commit(_unit: ocaml::sys::Value) -> ocaml::sys:
 
     let try_res = PgTryBuilder::new(|| {
         pg_sys::SPI_commit();
+        // PG 11–12 required this after commit so later SPI still had an
+        // open xact. From PG 13, SPI_commit already starts the next
+        // transaction; SPI_start_transaction is a compatibility no-op.
         pg_sys::SPI_start_transaction();
         Ok(())
     })
@@ -69,6 +72,7 @@ pub unsafe extern "C" fn plocaml_rollback(_unit: ocaml::sys::Value) -> ocaml::sy
 
     let try_res = PgTryBuilder::new(|| {
         pg_sys::SPI_rollback();
+        // Same as commit: historical SPI sequence. No-op on PG 13+.
         pg_sys::SPI_start_transaction();
         Ok(())
     })
