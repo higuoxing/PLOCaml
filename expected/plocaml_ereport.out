@@ -19,7 +19,7 @@ PL.info "This is message text."
 PL.notice ~detail:"some detail" "notice";
 PL.warning ~detail:"some detail" "warning";
 PL.error ~detail:"some detail" ~hint:"some hint" "stop on error";
-PL.Null
+()
 $$ LANGUAGE plocamlu;
 SELECT elog_test();
 INFO:  info
@@ -33,10 +33,9 @@ NOTICE:  notice
 DETAIL:  some detail
 WARNING:  warning
 DETAIL:  some detail
-ERROR:  PL/OCaml execution failed
-DETAIL:  Failure("stop on error
-DETAIL: some detail
-HINT: some hint")
+ERROR:  stop on error
+DETAIL:  some detail
+HINT:  some hint
 -- should fail
 DO $$ PL.info ~sqlstate:"54444A" "wrong sqlstate" $$ LANGUAGE plocamlu;
 INFO:  wrong sqlstate
@@ -59,16 +58,14 @@ PL.error
   ?datatype_name:(PL.to_string_opt _datatype_name)
   ?constraint_name:(PL.to_string_opt _constraint_name)
   (PL.to_string_exn _message);
-PL.Null
+()
 $$ LANGUAGE plocamlu;
 SELECT raise_exception('hello', 'world');
-ERROR:  PL/OCaml execution failed
-DETAIL:  Failure("hello
-DETAIL: world")
+ERROR:  hello
+DETAIL:  world
 SELECT raise_exception('message text', 'detail text', _sqlstate => 'YY333');
-ERROR:  PL/OCaml execution failed
-DETAIL:  Failure("message text
-DETAIL: detail text")
+ERROR:  message text
+DETAIL:  detail text
 SELECT raise_exception(_message => 'message text',
                        _detail => 'detail text',
                        _hint => 'hint text',
@@ -78,18 +75,16 @@ SELECT raise_exception(_message => 'message text',
                        _column_name => 'column text',
                        _datatype_name => 'datatype text',
                        _constraint_name => 'constraint text');
-ERROR:  PL/OCaml execution failed
-DETAIL:  Failure("message text
-DETAIL: detail text
-HINT: hint text")
+ERROR:  message text
+DETAIL:  detail text
+HINT:  hint text
 SELECT raise_exception(_message => 'message text',
                        _hint => 'hint text',
                        _schema_name => 'schema text',
                        _column_name => 'column text',
                        _constraint_name => 'constraint text');
-ERROR:  PL/OCaml execution failed
-DETAIL:  Failure("message text
-HINT: hint text")
+ERROR:  message text
+HINT:  hint text
 DO $$
 DECLARE
   __message text;
@@ -130,17 +125,5 @@ BEGIN
   END;
 END;
 $$;
-ERROR:  PL/OCaml execution failed
-DETAIL:  Failure("message text
-DETAIL: detail text
-HINT: hint text")
-CONTEXT:  SQL statement "SELECT raise_exception(_message => 'message text',
-                            _detail => 'detail text',
-                            _hint => 'hint text',
-                            _sqlstate => 'XX555',
-                            _schema_name => 'schema text',
-                            _table_name => 'table text',
-                            _column_name => 'column text',
-                            _datatype_name => 'datatype text',
-                            _constraint_name => 'constraint text')"
-PL/pgSQL function inline_code_block line 14 at PERFORM
+NOTICE:  handled exception
+DETAIL:  message:(message text), detail:(detail text), hint: (hint text), sqlstate: (XX555), schema_name:(schema text), table_name:(table text), column_name:(column text), datatype_name:(datatype text), constraint_name:(constraint text)

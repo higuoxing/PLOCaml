@@ -29,3 +29,4 @@ SELECT test_return_none(), test_return_none() IS NULL AS "is null";
 ------------------+---------
                   | t
 (1 row)
+

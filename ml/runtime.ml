@@ -89,6 +89,14 @@ let execute_phrases (source : string) : unit =
       Buffer.clear buf;
       if not (Toploop.execute_phrase false fmt p) then (
         Format.pp_print_flush fmt ();
+        (try
+           let reraiser : unit -> unit =
+             Obj.obj (Toploop.getvalue "reraise_pending_error")
+           in
+           reraiser ()
+         with
+        | Not_found -> ()
+        | e -> raise e);
         let msg = String.trim (Buffer.contents buf) in
         failwith (if msg = "" then "Execution failed" else msg)))
     (List.rev !phrases)
@@ -99,7 +107,10 @@ let init_toplevel (bootstrap_code : string) =
     execute_phrases bootstrap_code;
     toplevel_initialized := true)
 
-let execute_inline (source_text : string) : unit = execute_phrases source_text
+let execute_inline (source_text : string) : unit =
+  Fun.protect
+    ~finally:(fun () -> Gc.full_major ())
+    (fun () -> execute_phrases source_text)
 
 let is_ocaml_keyword = function
   | "and" | "as" | "assert" | "asr" | "begin" | "class" | "constraint" | "do"
@@ -145,7 +156,6 @@ let compile_function (fn_oid : int) (prosrc : string) (arg_names : string array)
   let var_name = Printf.sprintf "__plocaml_fn_%d" fn_oid in
   let nargs = Array.length arg_names in
   let buf = Buffer.create (String.length prosrc + 256) in
-  Buffer.add_string buf "[@@@warning \"-26-27\"]\n";
   Buffer.add_string buf
     (Printf.sprintf "let %s (args : Plocaml.datum array) =\n" var_name);
   for i = 0 to nargs - 1 do
@@ -175,7 +185,7 @@ let invoke_function (fn_oid : int) (prosrc : string) (arg_names : string array)
     | Some entry when String.equal entry.src_code prosrc -> entry.fn
     | _ -> compile_function fn_oid prosrc arg_names
   in
-  fn args
+  Fun.protect ~finally:(fun () -> Gc.full_major ()) (fun () -> fn args)
 
 let () =
   Callback.register "plocaml_init_toplevel" init_toplevel;

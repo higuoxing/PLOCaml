@@ -67,7 +67,7 @@ PL.Int 1
 $$;
 SELECT transaction_test3();
 ERROR:  PL/OCaml execution failed
-DETAIL:  Failure("invalid transaction termination")
+DETAIL:  Failure("PL/OCaml execution failed")
 SELECT * FROM test1;
  a | b 
 ---+---
@@ -82,13 +82,13 @@ PL.Int 1
 $$;
 SELECT transaction_test4();
 ERROR:  PL/OCaml execution failed
-DETAIL:  Failure("invalid transaction termination")
+DETAIL:  Failure("PL/OCaml execution failed")
 -- commit inside subtransaction (prohibited)
 DO LANGUAGE plocamlu $$
 PL.subtransaction (fun () -> PL.commit ())
 $$;
 ERROR:  PL/OCaml execution failed
-DETAIL:  Failure("invalid transaction termination")
+DETAIL:  Failure("Exception: Failure "cannot commit while a subtransaction is active".")
 -- commit inside cursor loop
 CREATE TABLE test2 (x int);
 INSERT INTO test2 VALUES (0), (1), (2), (3), (4);
@@ -140,12 +140,12 @@ in
 loop ()
 $$;
 ERROR:  PL/OCaml execution failed
-DETAIL:  Failure("division by zero")
+DETAIL:  Failure("Exception: Failure "division by zero".")
 SELECT * FROM test1;
- a | b 
----+---
- 0 | 
- 1 | 
+  a  | b 
+-----+---
+  -6 | 
+ -12 | 
 (2 rows)
 
 SELECT * FROM pg_cursors;
@@ -217,7 +217,9 @@ PL.commit ();
 PL.warning "should not get here"
 $$;
 ERROR:  PL/OCaml execution failed
-DETAIL:  Failure("insert or update on table "testfk" violates foreign key constraint "testfk_f1_fkey"")
+DETAIL:  Failure("Exception:
+Failure
+ "insert or update on table \"testfk\" violates foreign key constraint \"testfk_f1_fkey\"".")
 SELECT * FROM testpk;
  id 
 ----

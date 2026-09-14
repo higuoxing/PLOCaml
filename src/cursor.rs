@@ -14,6 +14,9 @@ impl Drop for SpiCursor {
                 unsafe {
                     let portal = pg_sys::SPI_cursor_find(c_name.as_ptr());
                     if !portal.is_null() {
+                        if (*portal).portalPinned {
+                            pg_sys::UnpinPortal(portal);
+                        }
                         pg_sys::SPI_cursor_close(portal);
                     }
                 }
@@ -69,6 +72,10 @@ pub unsafe extern "C" fn plocaml_spi_cursor_open(
         if portal.is_null() {
             Err("SPI_cursor_open failed".to_string())
         } else {
+            // HOLD + pin so SPI_commit/SPI_rollback can persist the portal
+            // (HoldPinnedPortals), matching PL/Python cursors.
+            (*portal).cursorOptions |= pg_sys::CURSOR_OPT_HOLD as i32;
+            pg_sys::PinPortal(portal);
             let name = CStr::from_ptr((*portal).name)
                 .to_str()
                 .map_err(|_| "Invalid UTF-8 in cursor name")?
@@ -186,6 +193,8 @@ pub unsafe extern "C" fn plocaml_spi_cursor_open_plan(
         if portal.is_null() {
             Err("SPI_cursor_open with plan failed".to_string())
         } else {
+            (*portal).cursorOptions |= pg_sys::CURSOR_OPT_HOLD as i32;
+            pg_sys::PinPortal(portal);
             let name = CStr::from_ptr((*portal).name)
                 .to_str()
                 .map_err(|_| "Invalid UTF-8 in cursor name")?
@@ -341,6 +350,9 @@ pub unsafe extern "C" fn plocaml_spi_cursor_close(
 
         let portal = pg_sys::SPI_cursor_find(c_name.as_ptr());
         if !portal.is_null() {
+            if (*portal).portalPinned {
+                pg_sys::UnpinPortal(portal);
+            }
             pg_sys::SPI_cursor_close(portal);
         }
         Ok(())

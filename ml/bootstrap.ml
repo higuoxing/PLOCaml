@@ -64,6 +64,8 @@ module Plocaml = struct
 
     exception Error of error_info
 
+    let pending_error : error_info option ref = ref None
+
     let report (level : log_level) ?detail ?hint ?sqlstate ?schema_name
         ?table_name ?column_name ?datatype_name ?constraint_name
         (message : string) : unit =
@@ -81,7 +83,9 @@ module Plocaml = struct
         }
       in
       match level with
-      | Error -> raise (Error info)
+      | Error ->
+          pending_error := Some info;
+          raise (Error info)
       | _ -> elog_record level info
 
     let debug ?detail ?hint ?sqlstate ?schema_name ?table_name ?column_name
@@ -228,5 +232,12 @@ module PL = Plocaml
 
 let decode_error (exn : exn) =
   match exn with PL.Error info -> Some info | _ -> None
+
+let reraise_pending_error () =
+  match !PL.Log.pending_error with
+  | None -> ()
+  | Some info ->
+      PL.Log.pending_error := None;
+      raise (PL.Error info)
 
 let () = Callback.register "plocaml_decode_error" decode_error
