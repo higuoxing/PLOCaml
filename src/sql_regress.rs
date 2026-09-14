@@ -83,7 +83,7 @@ fn prepend_bindir_to_path(bindir: &Path) -> std::ffi::OsString {
     path
 }
 
-fn recreate_sql_regress_db(client: &mut postgres::Client) {
+fn recreate_sql_regress_db(client: &mut postgres::Client, port: u16, user: &str) {
     client
         .simple_query(&format!(
             "SELECT pg_terminate_backend(pid) FROM pg_stat_activity \
@@ -96,6 +96,19 @@ fn recreate_sql_regress_db(client: &mut postgres::Client) {
     client
         .simple_query(&format!("CREATE DATABASE {SQL_REGRESS_DB}"))
         .expect("failed to create sql-regress database");
+
+    // pg_regress --load-extension is a no-op with --use-existing, so install
+    // the language into the dedicated database ourselves.
+    let mut regress_client = postgres::Config::new()
+        .host("localhost")
+        .port(port)
+        .user(user)
+        .dbname(SQL_REGRESS_DB)
+        .connect(postgres::NoTls)
+        .expect("failed to connect to sql-regress database");
+    regress_client
+        .simple_query("CREATE EXTENSION plocamlu")
+        .expect("failed to CREATE EXTENSION plocamlu in sql-regress database");
 }
 
 fn run_pg_regress(tests: &[&str]) {
@@ -138,7 +151,7 @@ fn run_pg_regress(tests: &[&str]) {
         .expect("failed to query test instance port/user");
     let port: i32 = row.get("port");
     let user: String = row.get("usr");
-    recreate_sql_regress_db(&mut client);
+    recreate_sql_regress_db(&mut client, port as u16, &user);
     drop(client);
 
     let mut command = Command::new(&pg_regress);
@@ -157,7 +170,6 @@ fn run_pg_regress(tests: &[&str]) {
         .arg(format!("--outputdir={}", output_dir.display()))
         .arg("--use-existing")
         .arg(format!("--dbname={SQL_REGRESS_DB}"))
-        .arg("--load-extension=plocamlu")
         .args(tests);
 
     let output = command
