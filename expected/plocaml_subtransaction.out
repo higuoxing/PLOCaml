@@ -78,7 +78,7 @@ PL.String "ok"
 $$ LANGUAGE plocamlu;
 SELECT subtransaction_nested_test();
 ERROR:  PL/OCaml execution failed
-DETAIL:  Failure("syntax error at or near "error"")
+DETAIL:  syntax error at or near "error"
 SELECT * FROM subtransaction_tbl;
  i 
 ---
@@ -282,10 +282,10 @@ SELECT cursor_in_subxact();
 
 SELECT cursor_aborted_subxact();
 ERROR:  PL/OCaml execution failed
-DETAIL:  Failure("PL/OCaml: cursor "<unnamed portal 2>" does not exist or has been closed")
+DETAIL:  PL/OCaml: cursor "<unnamed portal 2>" does not exist or has been closed
 SELECT cursor_plan_aborted_subxact();
 ERROR:  PL/OCaml execution failed
-DETAIL:  Failure("PL/OCaml: cursor "<unnamed portal 3>" does not exist or has been closed")
+DETAIL:  PL/OCaml: cursor "<unnamed portal 3>" does not exist or has been closed
 SELECT cursor_close_aborted_subxact();
  cursor_close_aborted_subxact 
 ------------------------------

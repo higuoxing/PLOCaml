@@ -294,7 +294,7 @@ SELECT result_str_test($$SELECT 1 AS foo UNION SELECT 2$$);
 
 SELECT result_str_test($$CREATE TEMPORARY TABLE foo1 (a int, b text)$$);
 ERROR:  PL/OCaml execution failed
-DETAIL:  Failure("relation "foo1" already exists")
+DETAIL:  relation "foo1" already exists
 -- cursor objects
 CREATE FUNCTION simple_cursor_test() RETURNS int AS $$
 let res = PL.cursor "select fname, lname from users" in
@@ -432,9 +432,9 @@ ERROR:  PL/OCaml execution failed
 DETAIL:  Unsupported return value tag 4 for PostgreSQL type 25
 SELECT cursor_plan_wrong_args();
 ERROR:  PL/OCaml execution failed
-DETAIL:  Failure("PL/OCaml: incorrect number of arguments for cursor plan (expected 1, got 2)")
+DETAIL:  PL/OCaml: incorrect number of arguments for cursor plan (expected 1, got 2)
 SELECT plan_composite_args();
 ERROR:  PL/OCaml execution failed
-DETAIL:  Failure("Unsupported datum tag 5 for SPI argument")
+DETAIL:  Unsupported datum tag 5 for SPI argument
 -- Official also tests Python sequences whose __getitem__ raises.
 -- OCaml has no analog; omitted.

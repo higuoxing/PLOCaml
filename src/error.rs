@@ -94,6 +94,119 @@ unsafe fn decode_pl_error(exc: sys::Value) -> Option<ErrorInfo> {
     Some(extract_error_info(*sys::field(raw, 0)))
 }
 
+/// Strip `Failure("…")`, `Invalid_argument("…")`, and Toploop
+/// `Exception: Failure "…".` wrappers so PostgreSQL DETAIL shows the
+/// inner message rather than OCaml's exception printer.
+pub(crate) fn unwrap_ocaml_exception_message(s: &str) -> String {
+    let mut current = s.trim().to_string();
+    loop {
+        let next = unwrap_ocaml_exception_once(&current);
+        if next == current {
+            return current.trim().to_string();
+        }
+        current = next;
+    }
+}
+
+fn unwrap_ocaml_exception_once(s: &str) -> String {
+    let s = s.trim();
+
+    if let Some(inner) = strip_paren_string_ctor(s, "Failure") {
+        return inner;
+    }
+    if let Some(inner) = strip_paren_string_ctor(s, "Invalid_argument") {
+        return inner;
+    }
+
+    let body = s.strip_prefix("Exception:").map(str::trim).unwrap_or(s);
+
+    if let Some(inner) = strip_quoted_string_ctor(body, "Failure") {
+        return inner;
+    }
+    if let Some(inner) = strip_quoted_string_ctor(body, "Invalid_argument") {
+        return inner;
+    }
+
+    s.to_string()
+}
+
+/// `Failure("msg")` / `Invalid_argument("msg")` from `caml_format_exception`.
+/// Inner quotes are not escaped, so take everything up to the last `")`.
+fn strip_paren_string_ctor(s: &str, ctor: &str) -> Option<String> {
+    let prefix = format!("{ctor}(\"");
+    let rest = s.strip_prefix(&prefix)?;
+    let rest = rest.trim_end();
+    let inner = rest.strip_suffix("\")")?;
+    Some(inner.to_string())
+}
+
+/// Toploop / compiler printer: `Failure "msg"` or a line-wrapped
+/// `Failure\n "msg"`, optionally followed by `.`.
+fn strip_quoted_string_ctor(s: &str, ctor: &str) -> Option<String> {
+    let rest = s.strip_prefix(ctor)?;
+    let rest = rest.trim_start();
+    let (inner, after) = parse_ocaml_quoted_string(rest)?;
+    let after = after
+        .trim()
+        .strip_prefix('.')
+        .unwrap_or(after.trim())
+        .trim();
+    if after.is_empty() {
+        Some(inner)
+    } else {
+        None
+    }
+}
+
+fn parse_ocaml_quoted_string(s: &str) -> Option<(String, &str)> {
+    let s = s.trim_start();
+    let mut chars = s.char_indices();
+    if chars.next()?.1 != '"' {
+        return None;
+    }
+    let mut out = String::new();
+    while let Some((i, ch)) = chars.next() {
+        match ch {
+            '"' => return Some((out, &s[i + 1..])),
+            '\\' => {
+                let (_, esc) = chars.next()?;
+                match esc {
+                    'n' => out.push('\n'),
+                    't' => out.push('\t'),
+                    'r' => out.push('\r'),
+                    'b' => out.push('\u{0008}'),
+                    '\\' | '"' | '\'' | ' ' => out.push(esc),
+                    'x' => {
+                        let (_, h1) = chars.next()?;
+                        let (_, h2) = chars.next()?;
+                        let hex = format!("{h1}{h2}");
+                        let byte = u8::from_str_radix(&hex, 16).ok()?;
+                        out.push(byte as char);
+                    }
+                    d if d.is_ascii_digit() => {
+                        let mut digits = String::from(d);
+                        for _ in 0..2 {
+                            let saved = chars.clone();
+                            match chars.next() {
+                                Some((_, c)) if c.is_ascii_digit() => digits.push(c),
+                                _ => {
+                                    chars = saved;
+                                    break;
+                                }
+                            }
+                        }
+                        let byte = digits.parse::<u8>().ok()?;
+                        out.push(byte as char);
+                    }
+                    other => out.push(other),
+                }
+            }
+            other => out.push(other),
+        }
+    }
+    None
+}
+
 /// Safely invokes an OCaml closure with arguments, catching any OCaml exceptions
 /// without triggering `ocaml-rs`'s buggy `caml_modify` on stack variables.
 pub(crate) unsafe fn call_exn(closure: Value, args: &[Value]) -> Result<Value, OcamlError> {
@@ -115,7 +228,7 @@ pub(crate) unsafe fn call_exn(closure: Value, args: &[Value]) -> Result<Value, O
             let msg = exc_val
                 .exception_to_string()
                 .unwrap_or_else(|_| "Unknown OCaml exception".to_string());
-            Err(OcamlError::Other(msg))
+            Err(OcamlError::Other(unwrap_ocaml_exception_message(&msg)))
         }
     } else {
         Ok(Value::new(raw_res))
@@ -205,6 +318,7 @@ pub(crate) fn raise_ocaml_error(err: OcamlError) -> ! {
     match err {
         OcamlError::Postgres(info) => raise_postgres_error(info),
         OcamlError::Other(detail) => {
+            let detail = unwrap_ocaml_exception_message(&detail);
             ereport!(
                 ERROR,
                 PgSqlErrorCode::ERRCODE_EXTERNAL_ROUTINE_EXCEPTION,
@@ -212,5 +326,67 @@ pub(crate) fn raise_ocaml_error(err: OcamlError) -> ! {
                 detail
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod unwrap_tests {
+    use super::unwrap_ocaml_exception_message;
+
+    #[test]
+    fn unwraps_failure_paren() {
+        assert_eq!(unwrap_ocaml_exception_message(r#"Failure("boom")"#), "boom");
+        assert_eq!(
+            unwrap_ocaml_exception_message(r#"Failure("syntax error at or near "syntax"")"#),
+            r#"syntax error at or near "syntax""#
+        );
+        assert_eq!(
+            unwrap_ocaml_exception_message(
+                r#"Failure("File "_none_", line 8, characters 2-5:
+Error: Syntax error
+")"#
+            ),
+            "File \"_none_\", line 8, characters 2-5:\nError: Syntax error"
+        );
+    }
+
+    #[test]
+    fn unwraps_invalid_argument() {
+        assert_eq!(
+            unwrap_ocaml_exception_message(r#"Invalid_argument("index out of bounds")"#),
+            "index out of bounds"
+        );
+    }
+
+    #[test]
+    fn unwraps_toploop_exception_failure() {
+        assert_eq!(
+            unwrap_ocaml_exception_message(r#"Failure("Exception: Failure "error test".")"#),
+            "error test"
+        );
+        assert_eq!(
+            unwrap_ocaml_exception_message(
+                r#"Failure("Exception: Failure "cannot commit while a subtransaction is active".")"#
+            ),
+            "cannot commit while a subtransaction is active"
+        );
+        assert_eq!(
+            unwrap_ocaml_exception_message(
+                "Failure(\"Exception:\nFailure\n \"insert or update on table \\\"testfk\\\" violates foreign key constraint \\\"testfk_f1_fkey\\\"\".\")"
+            ),
+            r#"insert or update on table "testfk" violates foreign key constraint "testfk_f1_fkey""#
+        );
+    }
+
+    #[test]
+    fn leaves_plain_messages_alone() {
+        assert_eq!(
+            unwrap_ocaml_exception_message("Unsupported return value tag 4 for PostgreSQL type 25"),
+            "Unsupported return value tag 4 for PostgreSQL type 25"
+        );
+        assert_eq!(
+            unwrap_ocaml_exception_message("Env.Error(_)"),
+            "Env.Error(_)"
+        );
     }
 }
