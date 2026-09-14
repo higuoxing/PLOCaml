@@ -44,4 +44,4 @@ jobs:
 
       - name: Run pgrx tests
         run: |
-          cargo pgrx test --no-default-features --features pg${{ matrix.pg_version }} pg_test
+          cargo pgrx test --no-default-features --features pg${{ matrix.pg_version }}
