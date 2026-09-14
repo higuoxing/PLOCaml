@@ -140,6 +140,75 @@ module Plocaml = struct
         Hashtbl.add sd_map oid s;
         s
 
+  (* Datum accessors, matching the C-branch / PL/Python-style helpers. *)
+  let to_int_exn = function
+    | Int x -> x
+    | _ -> failwith "PL/OCaml: Expected Int"
+
+  let to_float_exn = function
+    | Float x -> x
+    | _ -> failwith "PL/OCaml: Expected Float"
+
+  let to_string_exn = function
+    | String x -> x
+    | _ -> failwith "PL/OCaml: Expected String"
+
+  let to_bool_exn = function
+    | Bool x -> x
+    | _ -> failwith "PL/OCaml: Expected Bool"
+
+  let to_array_exn = function
+    | Array x -> x
+    | _ -> failwith "PL/OCaml: Expected Array"
+
+  let to_record_exn = function
+    | Record x -> x
+    | _ -> failwith "PL/OCaml: Expected Record"
+
+  let to_int_opt = function Int x -> Some x | _ -> None
+  let to_float_opt = function Float x -> Some x | _ -> None
+  let to_string_opt = function String x -> Some x | _ -> None
+  let to_bool_opt = function Bool x -> Some x | _ -> None
+  let to_array_opt = function Array x -> Some x | _ -> None
+  let to_record_opt = function Record x -> Some x | _ -> None
+
+  let field name = function
+    | Record fields -> List.assoc name fields
+    | _ -> failwith "PL/OCaml: Expected Record"
+
+  let to_int ~default = function Int x -> x | _ -> default
+  let to_float ~default = function Float x -> x | _ -> default
+  let to_string ~default = function String x -> x | _ -> default
+  let to_bool ~default = function Bool x -> x | _ -> default
+  let to_array ~default = function Array x -> x | _ -> default
+
+  (* GD/SD store helpers. The type read back MUST match the type written. *)
+  let set (t : store) (key : string) (v : 'a) : unit =
+    Hashtbl.replace t key (Obj.repr v)
+
+  let get_opt (t : store) (key : string) : 'a option =
+    match Hashtbl.find_opt t key with
+    | Some v -> Some (Obj.obj v)
+    | None -> None
+
+  let get (t : store) (key : string) : 'a =
+    match Hashtbl.find_opt t key with
+    | Some v -> Obj.obj v
+    | None ->
+        failwith (Printf.sprintf "PL/OCaml: no GD/SD entry for key %S" key)
+
+  (* Ad-hoc parameterized execute, implemented via prepare + execute_plan. *)
+  let execute_with_args (query : string) (args : datum array) : spi_result =
+    let type_of = function
+      | Int _ -> "int8"
+      | Float _ -> "float8"
+      | String _ | Null -> "text"
+      | Bool _ -> "bool"
+      | Array _ | Record _ -> "text"
+    in
+    let types = Array.map type_of args in
+    SPI.execute_plan (SPI.prepare query types) args
+
   (* Direct convenience shortcuts on Plocaml / PL *)
   let execute = SPI.execute
   let prepare = SPI.prepare
@@ -155,6 +224,7 @@ module Plocaml = struct
   let warning = Log.warning
   let error = Log.error
   let elog = Log.elog
+  let report = Log.report
   let quote_literal = Quote.literal
   let quote_nullable = Quote.nullable
   let quote_ident = Quote.ident

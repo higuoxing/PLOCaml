@@ -38,7 +38,25 @@ let () =
 
 let toplevel_initialized = ref false
 
+(* Normalize CR and CRLF to LF so function bodies match PL/Python's
+   universal-newline handling (plpython_newline). *)
+let normalize_newlines (s : string) : string =
+  let buf = Buffer.create (String.length s) in
+  let n = String.length s in
+  let rec loop i =
+    if i >= n then ()
+    else if s.[i] = '\r' then (
+      Buffer.add_char buf '\n';
+      if i + 1 < n && s.[i + 1] = '\n' then loop (i + 2) else loop (i + 1))
+    else (
+      Buffer.add_char buf s.[i];
+      loop (i + 1))
+  in
+  loop 0;
+  Buffer.contents buf
+
 let execute_phrases (source : string) : unit =
+  let source = normalize_newlines source in
   let buf = Buffer.create 128 in
   let fmt = Format.formatter_of_buffer buf in
   let lexbuf = Lexing.from_string (source ^ "\n;;") in
