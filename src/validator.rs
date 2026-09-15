@@ -1,8 +1,6 @@
 use crate::pg_finfo_v1;
 use pgrx::prelude::*;
 
-pg_finfo_v1!(pg_finfo_plocaml_validator);
-
 fn is_event_trigger_oid(oid: pg_sys::Oid) -> bool {
     // PG 13 names this EVTTRIGGEROID; PG 14+ use EVENT_TRIGGEROID.
     #[cfg(feature = "pg13")]
@@ -48,6 +46,8 @@ pub(crate) unsafe fn compile_plocaml_function(
 
 /// CREATE FUNCTION validator. Honors `check_function_bodies` like PL/Python:
 /// signature checks always run; body compile runs only when the GUC is on.
+pg_finfo_v1!(pg_finfo_plocaml_validator);
+
 #[no_mangle]
 #[pg_guard]
 pub extern "C-unwind" fn plocaml_validator(fcinfo: pg_sys::FunctionCallInfo) -> pg_sys::Datum {
