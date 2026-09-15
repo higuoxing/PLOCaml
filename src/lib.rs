@@ -14,11 +14,7 @@ mod validator;
 
 ::pgrx::pg_module_magic!(name, version);
 
-extension_sql_file!(
-    "sql/plocamlu.sql",
-    name = "plocamlu",
-    requires = [validator::plocaml_validator]
-);
+extension_sql_file!("sql/plocamlu.sql", name = "plocamlu");
 
 const BOOTSTRAP_CODE: &str = include_str!("../ml/bootstrap.ml");
 
@@ -56,6 +52,44 @@ mod tests {
     #[pg_test]
     fn test_inline_handler() {
         Spi::run("DO $$ let x = 1 + 2 in ();; () $$ LANGUAGE plocamlu;").expect("DO block failed");
+    }
+
+    #[pg_test(error = "File \"_none_\", line 8, characters 2-5:\nError: Syntax error")]
+    fn test_validator_rejects_syntax_error() {
+        Spi::run(
+            r#"
+            CREATE FUNCTION validator_syntax_error() RETURNS text LANGUAGE plocamlu AS $$
+              let x =
+            $$;
+            "#,
+        )
+        .expect("CREATE FUNCTION failed");
+    }
+
+    #[pg_test]
+    fn test_validator_skips_body_when_guc_off() {
+        Spi::run("SET check_function_bodies = false").expect("SET failed");
+        Spi::run(
+            r#"
+            CREATE FUNCTION validator_syntax_error_deferred() RETURNS text LANGUAGE plocamlu AS $$
+              let x =
+            $$;
+            "#,
+        )
+        .expect("CREATE FUNCTION should succeed with check_function_bodies = false");
+        Spi::run("RESET check_function_bodies").expect("RESET failed");
+    }
+
+    #[pg_test(error = "PL/OCaml: triggers are not yet supported")]
+    fn test_validator_rejects_trigger() {
+        Spi::run(
+            r#"
+            CREATE FUNCTION validator_trigger() RETURNS trigger LANGUAGE plocamlu AS $$
+              PL.Null
+            $$;
+            "#,
+        )
+        .expect("CREATE FUNCTION failed");
     }
 
     #[pg_test(error = "some error")]

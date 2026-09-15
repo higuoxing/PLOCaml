@@ -23,8 +23,10 @@ CREATE FUNCTION unicode_trigger() RETURNS trigger AS E'
 (* official assigns TD["new"]["testvalue"]; triggers are not yet supported *)
 PL.String "MODIFY"
 ' LANGUAGE plocamlu;
+ERROR:  PL/OCaml: triggers are not yet supported
 CREATE TRIGGER unicode_test_bi BEFORE INSERT ON unicode_test
   FOR EACH ROW EXECUTE PROCEDURE unicode_trigger();
+ERROR:  function unicode_trigger() does not exist
 CREATE FUNCTION unicode_plan1() RETURNS text AS E'
 let plan = PL.prepare "SELECT $1 AS testvalue" [|"text"|] in
 let rv = PL.execute_plan plan [| PL.String "\\xA0" |] in
@@ -38,11 +40,11 @@ List.assoc "testvalue" rv.rows.(0)
 SELECT unicode_return();
 ERROR:  Invalid UTF-8: Utf8Error { valid_up_to: 0, error_len: Some(1) }
 INSERT INTO unicode_test (testvalue) VALUES ('test');
-ERROR:  PL/OCaml: triggers are not yet supported
 SELECT * FROM unicode_test;
  testvalue 
 -----------
-(0 rows)
+ test
+(1 row)
 
 SELECT unicode_plan1();
 ERROR:  Invalid UTF-8: Utf8Error { valid_up_to: 0, error_len: Some(1) }

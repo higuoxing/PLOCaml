@@ -178,6 +178,12 @@ let compile_function (fn_oid : int) (prosrc : string) (arg_names : string array)
   Hashtbl.replace compiled_functions fn_oid { src_code = prosrc; fn };
   fn
 
+let compile_function_cached (fn_oid : int) (prosrc : string)
+    (arg_names : string array) : unit =
+  match Hashtbl.find_opt compiled_functions fn_oid with
+  | Some entry when String.equal entry.src_code prosrc -> ()
+  | _ -> ignore (compile_function fn_oid prosrc arg_names)
+
 let invoke_function (fn_oid : int) (prosrc : string) (arg_names : string array)
     (args : Obj.t array) : Obj.t =
   let fn =
@@ -190,4 +196,5 @@ let invoke_function (fn_oid : int) (prosrc : string) (arg_names : string array)
 let () =
   Callback.register "plocaml_init_toplevel" init_toplevel;
   Callback.register "plocaml_execute" execute_inline;
+  Callback.register "plocaml_compile_function" compile_function_cached;
   Callback.register "plocaml_invoke_function" invoke_function

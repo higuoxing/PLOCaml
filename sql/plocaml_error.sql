@@ -10,9 +10,7 @@ CREATE FUNCTION ocaml_syntax_error() RETURNS text
 $$ LANGUAGE plocamlu;
 
 /* With check_function_bodies = false the function should get defined
- * and the error reported when called. PL/OCaml compiles lazily, so
- * CREATE already succeeds; keep the official GUC around the second
- * definition anyway.
+ * and the error reported when called.
  */
 SET check_function_bodies = false;
 
