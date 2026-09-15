@@ -1,0 +1,56 @@
+-- Ported from PostgreSQL src/pl/plpython/sql/plpython_unicode.sql (REL_16_STABLE).
+--
+-- Unicode handling
+--
+-- This test case would fail if the database encoding is EUC_CN, EUC_JP,
+-- EUC_KR, or EUC_TW, for lack of any equivalent to U+00A0 (no-break space) in
+-- those encodings.  However, testing with plain ASCII data would be rather
+-- useless, so we must live with that.
+--
+SELECT getdatabaseencoding() IN ('EUC_CN', 'EUC_JP', 'EUC_KR', 'EUC_TW')
+  AS skip_test \gset
+\if :skip_test
+\quit
+\endif
+SET client_encoding TO UTF8;
+CREATE TABLE unicode_test (
+	testvalue  text NOT NULL
+);
+CREATE FUNCTION unicode_return() RETURNS text AS E'
+PL.String "\\xA0"
+' LANGUAGE plocamlu;
+CREATE FUNCTION unicode_trigger() RETURNS trigger AS E'
+(* official assigns TD["new"]["testvalue"]; triggers are not yet supported *)
+PL.String "MODIFY"
+' LANGUAGE plocamlu;
+ERROR:  PL/OCaml: triggers are not yet supported
+CREATE TRIGGER unicode_test_bi BEFORE INSERT ON unicode_test
+  FOR EACH ROW EXECUTE PROCEDURE unicode_trigger();
+ERROR:  function unicode_trigger() does not exist
+CREATE FUNCTION unicode_plan1() RETURNS text AS E'
+let plan = PL.prepare "SELECT $1 AS testvalue" [|"text"|] in
+let rv = PL.execute_plan plan [| PL.String "\\xA0" |] in
+List.assoc "testvalue" rv.rows.(0)
+' LANGUAGE plocamlu;
+CREATE FUNCTION unicode_plan2() RETURNS text AS E'
+let plan = PL.prepare "SELECT $1 || $2 AS testvalue" [|"text"; "text"|] in
+let rv = PL.execute_plan plan [| PL.String "foo"; PL.String "bar" |] in
+List.assoc "testvalue" rv.rows.(0)
+' LANGUAGE plocamlu;
+SELECT unicode_return();
+ERROR:  Invalid UTF-8: Utf8Error { valid_up_to: 0, error_len: Some(1) }
+INSERT INTO unicode_test (testvalue) VALUES ('test');
+SELECT * FROM unicode_test;
+ testvalue 
+-----------
+ test
+(1 row)
+
+SELECT unicode_plan1();
+ERROR:  Invalid UTF-8: Utf8Error { valid_up_to: 0, error_len: Some(1) }
+SELECT unicode_plan2();
+ unicode_plan2 
+---------------
+ foobar
+(1 row)
+

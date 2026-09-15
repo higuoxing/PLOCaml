@@ -4,6 +4,8 @@ CREATE FUNCTION plocaml_call_handler() RETURNS language_handler
 CREATE FUNCTION plocaml_inline_handler(internal) RETURNS void
   STRICT LANGUAGE C AS 'MODULE_PATHNAME';
 
+CREATE FUNCTION plocaml_validator(oid) RETURNS void
+  LANGUAGE C AS 'MODULE_PATHNAME';
 
 CREATE LANGUAGE plocamlu
   HANDLER plocaml_call_handler

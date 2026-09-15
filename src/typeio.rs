@@ -235,14 +235,24 @@ pub(crate) unsafe fn ocaml_value_to_pg_datum(
     type_oid: pg_sys::Oid,
 ) -> Result<(pg_sys::Datum, bool), String> {
     if type_oid == pg_sys::VOIDOID {
-        return Ok((pg_sys::Datum::from(0), false));
+        // `()` and `PL.Null` are both OCaml immediate 0. Anything else is a
+        // value, which PL/Python rejects from a void-returning function.
+        if ocaml::sys::is_long(val) && ocaml::sys::int_val(val) == 0 {
+            return Ok((pg_sys::Datum::from(0), true));
+        }
+        return Err("PL/OCaml function with return type \"void\" did not return ()".to_string());
     }
 
     if ocaml::sys::is_long(val) {
         let n = ocaml::sys::int_val(val);
         if type_oid == pg_sys::BOOLOID {
             return Ok((pg_sys::Datum::from(n != 0), false));
-        } else if type_oid == pg_sys::INT2OID {
+        }
+        // Immediate 0 is `()` / `PL.Null` (SQL NULL). Typed zeros are `PL.Int 0`.
+        if n == 0 {
+            return Ok((pg_sys::Datum::from(0), true));
+        }
+        if type_oid == pg_sys::INT2OID {
             return Ok((pg_sys::Datum::from(n as i16), false));
         } else if type_oid == pg_sys::INT4OID {
             return Ok((pg_sys::Datum::from(n as i32), false));
@@ -252,9 +262,6 @@ pub(crate) unsafe fn ocaml_value_to_pg_datum(
             return Ok((pg_sys::Float4GetDatum(n as f32), false));
         } else if type_oid == pg_sys::FLOAT8OID {
             return Ok((pg_sys::Float8GetDatum(n as f64), false));
-        } else if n == 0 {
-            // Null or None
-            return Ok((pg_sys::Datum::from(0), true));
         } else {
             let datum = string_to_pg_datum(&n.to_string(), type_oid)?;
             return Ok((datum, false));

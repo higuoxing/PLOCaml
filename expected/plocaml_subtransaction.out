@@ -1,0 +1,291 @@
+-- Ported from PostgreSQL src/pl/plpython/sql/plpython_subtransaction.sql (REL_16_STABLE).
+-- Python context-manager protocol tests (__enter__/__exit__) have no OCaml
+-- analog and are omitted; PL.subtransaction is a function taking a thunk.
+-- Test table to see if transactions get properly rolled back
+CREATE TABLE subtransaction_tbl (
+    i integer
+);
+CREATE FUNCTION subtransaction_ctx_test(what_error text = NULL) RETURNS text
+AS $$
+(try
+  PL.subtransaction (fun () ->
+    ignore (PL.execute "INSERT INTO subtransaction_tbl VALUES (1)");
+    ignore (PL.execute "INSERT INTO subtransaction_tbl VALUES (2)");
+    match what_error with
+    | PL.String "SPI" ->
+        ignore (PL.execute "INSERT INTO subtransaction_tbl VALUES ('oops')")
+    | PL.String "Python" ->
+        failwith "Python exception"
+    | _ -> ()
+  );
+  PL.String "ok"
+with Failure _ -> PL.String "error")
+$$ LANGUAGE plocamlu;
+SELECT subtransaction_ctx_test();
+ subtransaction_ctx_test 
+-------------------------
+ ok
+(1 row)
+
+SELECT * FROM subtransaction_tbl;
+ i 
+---
+ 1
+ 2
+(2 rows)
+
+TRUNCATE subtransaction_tbl;
+SELECT subtransaction_ctx_test('SPI');
+ subtransaction_ctx_test 
+-------------------------
+ error
+(1 row)
+
+SELECT * FROM subtransaction_tbl;
+ i 
+---
+(0 rows)
+
+TRUNCATE subtransaction_tbl;
+SELECT subtransaction_ctx_test('Python');
+ subtransaction_ctx_test 
+-------------------------
+ error
+(1 row)
+
+SELECT * FROM subtransaction_tbl;
+ i 
+---
+(0 rows)
+
+TRUNCATE subtransaction_tbl;
+-- Nested subtransactions
+CREATE FUNCTION subtransaction_nested_test(swallow boolean = 'f') RETURNS text
+AS $$
+ignore (PL.execute "INSERT INTO subtransaction_tbl VALUES (1)");
+PL.subtransaction (fun () ->
+  ignore (PL.execute "INSERT INTO subtransaction_tbl VALUES (2)");
+  try
+    PL.subtransaction (fun () ->
+      ignore (PL.execute "INSERT INTO subtransaction_tbl VALUES (3)");
+      ignore (PL.execute "error")
+    )
+  with Failure e ->
+    if not (PL.to_bool ~default:false swallow) then failwith e
+    else PL.notice (Printf.sprintf "Swallowed Failure(%S)" e)
+);
+PL.String "ok"
+$$ LANGUAGE plocamlu;
+SELECT subtransaction_nested_test();
+ERROR:  syntax error at or near "error"
+SELECT * FROM subtransaction_tbl;
+ i 
+---
+(0 rows)
+
+TRUNCATE subtransaction_tbl;
+SELECT subtransaction_nested_test('t');
+NOTICE:  Swallowed Failure("syntax error at or near \"error\"")
+ subtransaction_nested_test 
+----------------------------
+ ok
+(1 row)
+
+SELECT * FROM subtransaction_tbl;
+ i 
+---
+ 1
+ 2
+(2 rows)
+
+TRUNCATE subtransaction_tbl;
+-- Nested subtransactions that recursively call code dealing with
+-- subtransactions
+CREATE FUNCTION subtransaction_deeply_nested_test() RETURNS text
+AS $$
+ignore (PL.execute "INSERT INTO subtransaction_tbl VALUES (1)");
+PL.subtransaction (fun () ->
+  ignore (PL.execute "INSERT INTO subtransaction_tbl VALUES (2)");
+  ignore (PL.execute "SELECT subtransaction_nested_test('t')")
+);
+PL.String "ok"
+$$ LANGUAGE plocamlu;
+SELECT subtransaction_deeply_nested_test();
+NOTICE:  Swallowed Failure("syntax error at or near \"error\"")
+ subtransaction_deeply_nested_test 
+-----------------------------------
+ ok
+(1 row)
+
+SELECT * FROM subtransaction_tbl;
+ i 
+---
+ 1
+ 2
+ 1
+ 2
+(4 rows)
+
+TRUNCATE subtransaction_tbl;
+-- Make sure we don't get a "current transaction is aborted" error
+SELECT 1 as test;
+ test 
+------
+    1
+(1 row)
+
+-- Mix explicit subtransactions and normal SPI calls
+CREATE FUNCTION subtransaction_mix_explicit_and_implicit() RETURNS void
+AS $$
+let p = PL.prepare "INSERT INTO subtransaction_tbl VALUES ($1)" [|"integer"|] in
+(try
+  PL.subtransaction (fun () ->
+    ignore (PL.execute "INSERT INTO subtransaction_tbl VALUES (1)");
+    ignore (PL.execute_plan p [| PL.Int 2 |]);
+    ignore (PL.execute_plan p [| PL.String "wrong" |])
+  )
+with Failure _ ->
+  PL.warning "Caught a SPI error from an explicit subtransaction");
+(try
+  ignore (PL.execute "INSERT INTO subtransaction_tbl VALUES (1)");
+  ignore (PL.execute_plan p [| PL.Int 2 |]);
+  ignore (PL.execute_plan p [| PL.String "wrong" |])
+with Failure _ ->
+  PL.warning "Caught a SPI error");
+()
+$$ LANGUAGE plocamlu;
+SELECT subtransaction_mix_explicit_and_implicit();
+WARNING:  Caught a SPI error from an explicit subtransaction
+WARNING:  Caught a SPI error
+ subtransaction_mix_explicit_and_implicit 
+------------------------------------------
+ 
+(1 row)
+
+SELECT * FROM subtransaction_tbl;
+ i 
+---
+ 1
+ 2
+(2 rows)
+
+TRUNCATE subtransaction_tbl;
+-- try/catch inside a subtransaction block
+CREATE FUNCTION try_catch_inside_subtransaction() RETURNS void
+AS $$
+PL.subtransaction (fun () ->
+  ignore (PL.execute "INSERT INTO subtransaction_tbl VALUES (1)");
+  try
+    ignore (PL.execute "INSERT INTO subtransaction_tbl VALUES ('a')")
+  with Failure _ ->
+    PL.notice "caught"
+);
+()
+$$ LANGUAGE plocamlu;
+SELECT try_catch_inside_subtransaction();
+NOTICE:  caught
+ try_catch_inside_subtransaction 
+---------------------------------
+ 
+(1 row)
+
+SELECT * FROM subtransaction_tbl;
+ i 
+---
+ 1
+(1 row)
+
+TRUNCATE subtransaction_tbl;
+ALTER TABLE subtransaction_tbl ADD PRIMARY KEY (i);
+CREATE FUNCTION pk_violation_inside_subtransaction() RETURNS void
+AS $$
+PL.subtransaction (fun () ->
+  ignore (PL.execute "INSERT INTO subtransaction_tbl VALUES (1)");
+  try
+    ignore (PL.execute "INSERT INTO subtransaction_tbl VALUES (1)")
+  with Failure _ ->
+    PL.notice "caught"
+);
+()
+$$ LANGUAGE plocamlu;
+SELECT pk_violation_inside_subtransaction();
+NOTICE:  caught
+ pk_violation_inside_subtransaction 
+------------------------------------
+ 
+(1 row)
+
+SELECT * FROM subtransaction_tbl;
+ i 
+---
+ 1
+(1 row)
+
+DROP TABLE subtransaction_tbl;
+-- cursor/subtransactions interactions
+CREATE FUNCTION cursor_in_subxact() RETURNS int AS $$
+let cur = ref None in
+PL.subtransaction (fun () ->
+  let c = PL.cursor "select * from generate_series(1, 20) as gen(i)" in
+  ignore (PL.fetch c 10);
+  cur := Some c
+);
+let fetched = PL.fetch (Option.get !cur) 10 in
+PL.Int (PL.to_int_exn (List.assoc "i" fetched.rows.(5)))
+$$ LANGUAGE plocamlu;
+CREATE FUNCTION cursor_aborted_subxact() RETURNS int AS $$
+let cur = ref None in
+(try
+  PL.subtransaction (fun () ->
+    let c = PL.cursor "select * from generate_series(1, 20) as gen(i)" in
+    ignore (PL.fetch c 10);
+    cur := Some c;
+    ignore (PL.execute "select no_such_function()")
+  );
+  PL.Int 0
+with Failure _ ->
+  let fetched = PL.fetch (Option.get !cur) 10 in
+  PL.Int (PL.to_int_exn (List.assoc "i" fetched.rows.(5))))
+$$ LANGUAGE plocamlu;
+CREATE FUNCTION cursor_plan_aborted_subxact() RETURNS int AS $$
+let cur = ref None in
+(try
+  PL.subtransaction (fun () ->
+    ignore (PL.execute "create temporary table tmp(i) as select generate_series(1, 10)");
+    let plan = PL.prepare "select i from tmp" [||] in
+    cur := Some (PL.cursor_plan plan [||]);
+    ignore (PL.execute "select no_such_function()")
+  );
+  PL.Int 0
+with Failure _ ->
+  let fetched = PL.fetch (Option.get !cur) 5 in
+  PL.Int (PL.to_int_exn (List.assoc "i" fetched.rows.(2))))
+$$ LANGUAGE plocamlu;
+CREATE FUNCTION cursor_close_aborted_subxact() RETURNS boolean AS $$
+let cur = ref None in
+(try
+  PL.subtransaction (fun () ->
+    cur := Some (PL.cursor "select 1");
+    ignore (PL.execute "select no_such_function()")
+  );
+  PL.Bool false
+with Failure _ ->
+  PL.close (Option.get !cur);
+  PL.Bool true)
+$$ LANGUAGE plocamlu;
+SELECT cursor_in_subxact();
+ cursor_in_subxact 
+-------------------
+                16
+(1 row)
+
+SELECT cursor_aborted_subxact();
+ERROR:  PL/OCaml: cursor "<unnamed portal 2>" does not exist or has been closed
+SELECT cursor_plan_aborted_subxact();
+ERROR:  PL/OCaml: cursor "<unnamed portal 3>" does not exist or has been closed
+SELECT cursor_close_aborted_subxact();
+ cursor_close_aborted_subxact 
+------------------------------
+ t
+(1 row)
+

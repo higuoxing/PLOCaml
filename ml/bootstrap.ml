@@ -62,10 +62,14 @@ module Plocaml = struct
   module Log = struct
     external elog_record : log_level -> error_info -> unit = "plocaml_elog"
 
+    exception Error of error_info
+
+    let pending_error : error_info option ref = ref None
+
     let report (level : log_level) ?detail ?hint ?sqlstate ?schema_name
         ?table_name ?column_name ?datatype_name ?constraint_name
         (message : string) : unit =
-      elog_record level
+      let info =
         {
           e_message = message;
           e_detail = detail;
@@ -77,6 +81,12 @@ module Plocaml = struct
           e_datatype_name = datatype_name;
           e_constraint_name = constraint_name;
         }
+      in
+      match level with
+      | Error ->
+          pending_error := Some info;
+          raise (Error info)
+      | _ -> elog_record level info
 
     let debug ?detail ?hint ?sqlstate ?schema_name ?table_name ?column_name
         ?datatype_name ?constraint_name message =
@@ -106,7 +116,8 @@ module Plocaml = struct
     let error ?detail ?hint ?sqlstate ?schema_name ?table_name ?column_name
         ?datatype_name ?constraint_name message =
       report Error ?detail ?hint ?sqlstate ?schema_name ?table_name ?column_name
-        ?datatype_name ?constraint_name message
+        ?datatype_name ?constraint_name message;
+      failwith "PL.error"
 
     let elog (level : log_level) (message : string) : unit =
       report level message
@@ -140,6 +151,59 @@ module Plocaml = struct
         Hashtbl.add sd_map oid s;
         s
 
+  (* Unwrap `datum` values and SD/GD entries. Arguments arrive as the
+     `datum` ADT, so user code needs a small conversion layer. *)
+  let to_int_exn = function
+    | Int x -> x
+    | _ -> failwith "PL/OCaml: Expected Int"
+
+  let to_float_exn = function
+    | Float x -> x
+    | _ -> failwith "PL/OCaml: Expected Float"
+
+  let to_string_exn = function
+    | String x -> x
+    | _ -> failwith "PL/OCaml: Expected String"
+
+  let to_bool_exn = function
+    | Bool x -> x
+    | _ -> failwith "PL/OCaml: Expected Bool"
+
+  let to_array_exn = function
+    | Array x -> x
+    | _ -> failwith "PL/OCaml: Expected Array"
+
+  let to_record_exn = function
+    | Record x -> x
+    | _ -> failwith "PL/OCaml: Expected Record"
+
+  let to_int_opt = function Int x -> Some x | _ -> None
+  let to_float_opt = function Float x -> Some x | _ -> None
+  let to_string_opt = function String x -> Some x | _ -> None
+  let to_bool_opt = function Bool x -> Some x | _ -> None
+  let to_array_opt = function Array x -> Some x | _ -> None
+  let to_record_opt = function Record x -> Some x | _ -> None
+  let to_int ~default = function Int x -> x | _ -> default
+  let to_float ~default = function Float x -> x | _ -> default
+  let to_string ~default = function String x -> x | _ -> default
+  let to_bool ~default = function Bool x -> x | _ -> default
+  let to_array ~default = function Array x -> x | _ -> default
+
+  (* GD/SD store helpers. The type read back MUST match the type written. *)
+  let set (t : store) (key : string) (v : 'a) : unit =
+    Hashtbl.replace t key (Obj.repr v)
+
+  let get_opt (t : store) (key : string) : 'a option =
+    match Hashtbl.find_opt t key with
+    | Some v -> Some (Obj.obj v)
+    | None -> None
+
+  let get (t : store) (key : string) : 'a =
+    match Hashtbl.find_opt t key with
+    | Some v -> Obj.obj v
+    | None ->
+        failwith (Printf.sprintf "PL/OCaml: no GD/SD entry for key %S" key)
+
   (* Direct convenience shortcuts on Plocaml / PL *)
   let execute = SPI.execute
   let prepare = SPI.prepare
@@ -155,10 +219,34 @@ module Plocaml = struct
   let warning = Log.warning
   let error = Log.error
   let elog = Log.elog
+  let report = Log.report
   let quote_literal = Quote.literal
   let quote_nullable = Quote.nullable
   let quote_ident = Quote.ident
   let get_sd = get_sd
+
+  exception Error = Log.Error
 end
 
 module PL = Plocaml
+
+(* PL/Python reports compile failures as
+     ERROR:  could not compile PL/Python function "name"
+     DETAIL: <compiler text>
+   Mirror that: the OCaml location text (function name as filename, line
+   numbers relative to the user body) becomes DETAIL. *)
+let plocaml_raise_compile_error (name : string) (detail : string) =
+  PL.error ~detail
+    (Printf.sprintf "could not compile PL/OCaml function \"%s\"" name)
+
+let decode_error (exn : exn) =
+  match exn with PL.Error info -> Some info | _ -> None
+
+let reraise_pending_error () =
+  match !PL.Log.pending_error with
+  | None -> ()
+  | Some info ->
+      PL.Log.pending_error := None;
+      raise (PL.Error info)
+
+let () = Callback.register "plocaml_decode_error" decode_error

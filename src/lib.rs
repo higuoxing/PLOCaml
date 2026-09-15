@@ -14,11 +14,7 @@ mod validator;
 
 ::pgrx::pg_module_magic!(name, version);
 
-extension_sql_file!(
-    "sql/plocamlu.sql",
-    name = "plocamlu",
-    requires = [validator::plocaml_validator]
-);
+extension_sql_file!("sql/plocamlu.sql", name = "plocamlu");
 
 const BOOTSTRAP_CODE: &str = include_str!("../ml/bootstrap.ml");
 
@@ -28,8 +24,12 @@ pub extern "C-unwind" fn _PG_init() {
     if let Some(init_fn) = unsafe { ocaml::Value::named("plocaml_init_toplevel") } {
         let code_val = unsafe { ocaml::Value::string(BOOTSTRAP_CODE) };
         unsafe {
-            if let Err(err_msg) = crate::error::call_exn(init_fn, &[code_val]) {
-                pgrx::error!("failed to initialize PL/OCaml toplevel: {err_msg}");
+            if let Err(err) = crate::error::call_exn(init_fn, &[code_val]) {
+                let msg = match err {
+                    crate::error::OcamlError::Postgres(info) => info.message,
+                    crate::error::OcamlError::Other(s) => s,
+                };
+                pgrx::error!("failed to initialize PL/OCaml toplevel: {msg}");
             }
         }
     }
@@ -54,7 +54,45 @@ mod tests {
         Spi::run("DO $$ let x = 1 + 2 in ();; () $$ LANGUAGE plocamlu;").expect("DO block failed");
     }
 
-    #[pg_test(error = "PL/OCaml execution failed")]
+    #[pg_test(error = "could not compile PL/OCaml function \"validator_syntax_error\"")]
+    fn test_validator_rejects_syntax_error() {
+        Spi::run(
+            r#"
+            CREATE FUNCTION validator_syntax_error() RETURNS text LANGUAGE plocamlu AS $$
+              let x =
+            $$;
+            "#,
+        )
+        .expect("CREATE FUNCTION failed");
+    }
+
+    #[pg_test]
+    fn test_validator_skips_body_when_guc_off() {
+        Spi::run("SET check_function_bodies = false").expect("SET failed");
+        Spi::run(
+            r#"
+            CREATE FUNCTION validator_syntax_error_deferred() RETURNS text LANGUAGE plocamlu AS $$
+              let x =
+            $$;
+            "#,
+        )
+        .expect("CREATE FUNCTION should succeed with check_function_bodies = false");
+        Spi::run("RESET check_function_bodies").expect("RESET failed");
+    }
+
+    #[pg_test(error = "PL/OCaml: triggers are not yet supported")]
+    fn test_validator_rejects_trigger() {
+        Spi::run(
+            r#"
+            CREATE FUNCTION validator_trigger() RETURNS trigger LANGUAGE plocamlu AS $$
+              PL.Null
+            $$;
+            "#,
+        )
+        .expect("CREATE FUNCTION failed");
+    }
+
+    #[pg_test(error = "some error")]
     fn test_ocaml_failwith_bridging() {
         Spi::run("DO $$ failwith \"some error\" $$ LANGUAGE plocamlu;").expect("DO block failed");
     }
@@ -73,7 +111,7 @@ mod tests {
         .expect("DO block failed");
     }
 
-    #[pg_test(error = "PL/OCaml execution failed")]
+    #[pg_test(error = "uncaught error")]
     fn test_subtransaction_uncaught() {
         Spi::run(
             "DO $$ PL.subtransaction (fun () -> failwith \"uncaught error\") $$ LANGUAGE plocamlu;",
@@ -297,7 +335,7 @@ mod tests {
         .expect("DO block failed");
     }
 
-    #[pg_test(error = "PL/OCaml execution failed")]
+    #[pg_test(error = "PL/OCaml: incorrect number of arguments for plan (expected 1, got 2)")]
     fn test_spi_execute_plan_wrong_args_count() {
         Spi::run(
             r#"DO $$
@@ -309,12 +347,12 @@ mod tests {
         .expect("DO block failed");
     }
 
-    #[pg_test(error = "PL/OCaml execution failed")]
+    #[pg_test(error = "invalid transaction termination")]
     fn test_commit_in_atomic_context_fails() {
         Spi::run("DO $$ PL.commit () $$ LANGUAGE plocamlu;").expect("DO block failed");
     }
 
-    #[pg_test(error = "PL/OCaml execution failed")]
+    #[pg_test(error = "invalid transaction termination")]
     fn test_rollback_in_atomic_context_fails() {
         Spi::run("DO $$ PL.rollback () $$ LANGUAGE plocamlu;").expect("DO block failed");
     }
@@ -331,7 +369,7 @@ mod tests {
         .expect("DO block failed");
     }
 
-    #[pg_test(error = "PL/OCaml execution failed")]
+    #[pg_test(error = "invalid transaction termination")]
     fn test_commit_inside_subtransaction_fails() {
         Spi::run(
             r#"DO $$
@@ -375,7 +413,7 @@ mod tests {
         .expect("DO block failed");
     }
 
-    #[pg_test(error = "PL/OCaml execution failed")]
+    #[pg_test(error = "Fatal custom error")]
     fn test_log_error_uncaught_fails() {
         Spi::run(
             r#"DO $$
@@ -391,7 +429,7 @@ mod tests {
             r#"DO $$
             try
               PL.Log.error "Caught error"
-            with Failure _ -> ()
+            with PL.Error _ -> ()
             $$ LANGUAGE plocamlu;"#,
         )
         .expect("DO block failed");
@@ -531,7 +569,7 @@ mod tests {
         .expect("DO block failed");
     }
 
-    #[pg_test(error = "PL/OCaml execution failed")]
+    #[pg_test(error = "PL/OCaml: cursor is closed")]
     fn test_spi_cursor_fetch_after_close_fails() {
         Spi::run(
             r#"DO $$
@@ -820,7 +858,7 @@ mod tests {
         assert_eq!(res_table, 20);
     }
 
-    #[pg_test(error = "PL/OCaml execution failed")]
+    #[pg_test(error = "intentional function error")]
     fn test_call_handler_error_fails() {
         Spi::run(
             r#"
@@ -959,6 +997,9 @@ mod tests {
         assert_eq!(res, 20);
     }
 }
+
+#[cfg(test)]
+mod sql_regress;
 
 #[cfg(test)]
 mod host_tests {
