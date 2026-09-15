@@ -3,6 +3,18 @@ use pgrx::prelude::*;
 
 pg_finfo_v1!(pg_finfo_plocaml_validator);
 
+fn is_event_trigger_oid(oid: pg_sys::Oid) -> bool {
+    // PG 13 names this EVTTRIGGEROID; PG 14+ use EVENT_TRIGGEROID.
+    #[cfg(feature = "pg13")]
+    {
+        oid == pg_sys::EVTTRIGGEROID
+    }
+    #[cfg(not(feature = "pg13"))]
+    {
+        oid == pg_sys::EVENT_TRIGGEROID
+    }
+}
+
 unsafe fn arg_names_array(pronargs: usize, proargnames: &[Option<String>]) -> ocaml::Value {
     let names_arr = ocaml::sys::caml_alloc(pronargs, 0);
     let names_arr_val = ocaml::Value::new(names_arr);
@@ -71,7 +83,7 @@ pub extern "C-unwind" fn plocaml_validator(fcinfo: pg_sys::FunctionCallInfo) -> 
         )
     };
 
-    if prorettype == pg_sys::TRIGGEROID || prorettype == pg_sys::EVENT_TRIGGEROID {
+    if prorettype == pg_sys::TRIGGEROID || is_event_trigger_oid(prorettype) {
         pgrx::error!("PL/OCaml: triggers are not yet supported");
     }
 
