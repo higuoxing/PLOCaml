@@ -230,6 +230,15 @@ end
 
 module PL = Plocaml
 
+(* PL/Python reports compile failures as
+     ERROR:  could not compile PL/Python function "name"
+     DETAIL: <compiler text>
+   Mirror that: the OCaml location text (function name as filename, line
+   numbers relative to the user body) becomes DETAIL. *)
+let plocaml_raise_compile_error (name : string) (detail : string) =
+  PL.error ~detail
+    (Printf.sprintf "could not compile PL/OCaml function \"%s\"" name)
+
 let decode_error (exn : exn) =
   match exn with PL.Error info -> Some info | _ -> None
 

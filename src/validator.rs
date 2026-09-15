@@ -1,5 +1,18 @@
 use crate::pg_finfo_v1;
 use pgrx::prelude::*;
+use std::ffi::CStr;
+
+pub(crate) fn function_name(oid: pg_sys::Oid) -> String {
+    unsafe {
+        let ptr = pg_sys::get_func_name(oid);
+        if ptr.is_null() {
+            return "<unknown>".to_string();
+        }
+        let name = CStr::from_ptr(ptr).to_string_lossy().into_owned();
+        pg_sys::pfree(ptr.cast());
+        name
+    }
+}
 
 fn is_event_trigger_oid(oid: pg_sys::Oid) -> bool {
     // PG 13 names this EVTTRIGGEROID; PG 14+ use EVENT_TRIGGEROID.
@@ -29,6 +42,7 @@ unsafe fn arg_names_array(pronargs: usize, proargnames: &[Option<String>]) -> oc
 /// a successful Toploop define).
 pub(crate) unsafe fn compile_plocaml_function(
     fn_oid: pg_sys::Oid,
+    proname: &str,
     prosrc: &str,
     pronargs: usize,
     proargnames: &[Option<String>],
@@ -37,8 +51,12 @@ pub(crate) unsafe fn compile_plocaml_function(
     let compile_fn = ocaml::Value::named("plocaml_compile_function")
         .unwrap_or_else(|| pgrx::error!("plocaml_compile_function callback not registered"));
     let fn_oid_val = ocaml::Value::new(ocaml::sys::val_int(fn_oid.to_u32() as isize));
+    let proname_val = ocaml::Value::string(proname);
     let prosrc_val = ocaml::Value::string(prosrc);
-    match crate::error::call_exn(compile_fn, &[fn_oid_val, prosrc_val, names_arr_val]) {
+    match crate::error::call_exn(
+        compile_fn,
+        &[fn_oid_val, proname_val, prosrc_val, names_arr_val],
+    ) {
         Ok(_) => {}
         Err(err) => crate::error::raise_ocaml_error(err),
     }
@@ -90,8 +108,9 @@ pub extern "C-unwind" fn plocaml_validator(fcinfo: pg_sys::FunctionCallInfo) -> 
     // pg_dump sets check_function_bodies=off so restore can create functions
     // whose bodies depend on objects that are not loaded yet.
     if unsafe { pg_sys::check_function_bodies } {
+        let proname = function_name(funcoid);
         unsafe {
-            compile_plocaml_function(funcoid, &prosrc, pronargs, &proargnames);
+            compile_plocaml_function(funcoid, &proname, &prosrc, pronargs, &proargnames);
         }
     }
 

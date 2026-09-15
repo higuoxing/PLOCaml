@@ -54,7 +54,7 @@ mod tests {
         Spi::run("DO $$ let x = 1 + 2 in ();; () $$ LANGUAGE plocamlu;").expect("DO block failed");
     }
 
-    #[pg_test(error = "File \"_none_\", line 8, characters 2-5:\nError: Syntax error")]
+    #[pg_test(error = "could not compile PL/OCaml function \"validator_syntax_error\"")]
     fn test_validator_rejects_syntax_error() {
         Spi::run(
             r#"
