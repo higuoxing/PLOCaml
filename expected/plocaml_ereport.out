@@ -56,8 +56,7 @@ PL.error
   ?column_name:(PL.to_string_opt _column_name)
   ?datatype_name:(PL.to_string_opt _datatype_name)
   ?constraint_name:(PL.to_string_opt _constraint_name)
-  (PL.to_string_exn _message);
-()
+  (PL.to_string_exn _message)
 $$ LANGUAGE plocamlu;
 SELECT raise_exception('hello', 'world');
 ERROR:  hello
