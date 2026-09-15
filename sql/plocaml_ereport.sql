@@ -19,8 +19,7 @@ PL.info "This is message text."
   ~constraint_name:"any info about constraint";
 PL.notice ~detail:"some detail" "notice";
 PL.warning ~detail:"some detail" "warning";
-PL.error ~detail:"some detail" ~hint:"some hint" "stop on error";
-()
+PL.error ~detail:"some detail" ~hint:"some hint" "stop on error"
 $$ LANGUAGE plocamlu;
 
 SELECT elog_test();
