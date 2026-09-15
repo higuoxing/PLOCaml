@@ -7,7 +7,8 @@ CREATE FUNCTION ocaml_syntax_error() RETURNS text
         AS $$
   let x =
 $$ LANGUAGE plocamlu;
-ERROR:  File "_none_", line 8, characters 2-5:
+ERROR:  could not compile PL/OCaml function "ocaml_syntax_error"
+DETAIL:  File "ocaml_syntax_error", line 4, characters 2-5:
 Error: Syntax error
 /* With check_function_bodies = false the function should get defined
  * and the error reported when called.
@@ -18,11 +19,13 @@ CREATE OR REPLACE FUNCTION ocaml_syntax_error() RETURNS text
   let x =
 $$ LANGUAGE plocamlu;
 SELECT ocaml_syntax_error();
-ERROR:  File "_none_", line 8, characters 2-5:
+ERROR:  could not compile PL/OCaml function "ocaml_syntax_error"
+DETAIL:  File "ocaml_syntax_error", line 4, characters 2-5:
 Error: Syntax error
 /* Run the function twice to check if the hashtable entry gets cleaned up */
 SELECT ocaml_syntax_error();
-ERROR:  File "_none_", line 8, characters 2-5:
+ERROR:  could not compile PL/OCaml function "ocaml_syntax_error"
+DETAIL:  File "ocaml_syntax_error", line 4, characters 2-5:
 Error: Syntax error
 RESET check_function_bodies;
 /* Flat out syntax error
@@ -99,7 +102,11 @@ let rv = PL.execute_plan (PL.get sd "plan") [| a |] in
 if Array.length rv.rows > 0 then List.assoc "fname" rv.rows.(0)
 else PL.Null
 $$ LANGUAGE plocamlu;
-ERROR:  Typecore.Error(_, _, _)
+ERROR:  could not compile PL/OCaml function "invalid_type_reraised"
+DETAIL:  File "invalid_type_reraised", line 7, characters 33-63:
+Error: This expression has type PL.datum = Plocaml.datum
+       but an expression was expected of type unit
+       because it is in the result of a conditional with no else branch
 SELECT invalid_type_reraised('rick');
 ERROR:  function invalid_type_reraised(unknown) does not exist
 LINE 1: SELECT invalid_type_reraised('rick');
@@ -171,7 +178,9 @@ CREATE FUNCTION toplevel_attribute_error() RETURNS void AS
 $$
 ignore PL.nonexistent
 $$ LANGUAGE plocamlu;
-ERROR:  Env.Error(_)
+ERROR:  could not compile PL/OCaml function "toplevel_attribute_error"
+DETAIL:  File "toplevel_attribute_error", line 2, characters 7-21:
+Error: Unbound value PL.nonexistent
 SELECT toplevel_attribute_error();
 ERROR:  function toplevel_attribute_error() does not exist
 LINE 1: SELECT toplevel_attribute_error();

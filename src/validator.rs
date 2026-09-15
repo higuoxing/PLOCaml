@@ -62,10 +62,10 @@ pub(crate) unsafe fn compile_plocaml_function(
     }
 }
 
-/// CREATE FUNCTION validator. Honors `check_function_bodies` like PL/Python:
-/// signature checks always run; body compile runs only when the GUC is on.
 pg_finfo_v1!(pg_finfo_plocaml_validator);
 
+/// CREATE FUNCTION validator. Honors `check_function_bodies` like PL/Python:
+/// signature checks always run; body compile runs only when the GUC is on.
 #[no_mangle]
 #[pg_guard]
 pub extern "C-unwind" fn plocaml_validator(fcinfo: pg_sys::FunctionCallInfo) -> pg_sys::Datum {

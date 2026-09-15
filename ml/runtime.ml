@@ -103,7 +103,7 @@ let execute_phrases ?(filename = "_none_") (source : string) : unit =
          strip_leading_newlines (String.sub s 1 (String.length s - 1))
        else s
      in
-     let msg = strip_leading_newlines msg in
+     let msg = String.trim (strip_leading_newlines msg) in
      let msg = if msg = "" then Printexc.to_string e else msg in
      failwith msg);
   List.iter
