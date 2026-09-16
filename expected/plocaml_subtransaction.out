@@ -80,6 +80,8 @@ SELECT subtransaction_nested_test();
 ERROR:  syntax error at or near "error"
 CONTEXT:  Traceback (most recent call last):
   PL/OCaml function "subtransaction_nested_test", line 3, in subtransaction_nested_test
+  PL/OCaml function "subtransaction_nested_test", line 6, in (fun)
+  PL/OCaml function "subtransaction_nested_test", line 8, in (fun)
 PL/OCaml function "subtransaction_nested_test"
 SELECT * FROM subtransaction_tbl;
  i 
@@ -285,12 +287,14 @@ SELECT cursor_in_subxact();
 SELECT cursor_aborted_subxact();
 ERROR:  PL/OCaml: cursor "<unnamed portal 2>" does not exist or has been closed
 CONTEXT:  Traceback (most recent call last):
-  PL/OCaml function "cursor_aborted_subxact", line 12, in cursor_aborted_subxact
+  PL/OCaml function "cursor_aborted_subxact", line 4, in cursor_aborted_subxact
+  PL/OCaml function "cursor_aborted_subxact", line 8, in (fun)
 PL/OCaml function "cursor_aborted_subxact"
 SELECT cursor_plan_aborted_subxact();
 ERROR:  PL/OCaml: cursor "<unnamed portal 3>" does not exist or has been closed
 CONTEXT:  Traceback (most recent call last):
-  PL/OCaml function "cursor_plan_aborted_subxact", line 12, in cursor_plan_aborted_subxact
+  PL/OCaml function "cursor_plan_aborted_subxact", line 4, in cursor_plan_aborted_subxact
+  PL/OCaml function "cursor_plan_aborted_subxact", line 8, in (fun)
 PL/OCaml function "cursor_plan_aborted_subxact"
 SELECT cursor_close_aborted_subxact();
  cursor_close_aborted_subxact 

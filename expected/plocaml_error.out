@@ -117,7 +117,7 @@ $$ LANGUAGE plocamlu;
 SELECT invalid_type_reraised('rick');
 ERROR:  type "test" does not exist
 CONTEXT:  Traceback (most recent call last):
-  PL/OCaml function "invalid_type_reraised", line 6, in invalid_type_reraised
+  PL/OCaml function "invalid_type_reraised", line 4, in invalid_type_reraised
 PL/OCaml function "invalid_type_reraised"
 /* no typo no messing about
  */

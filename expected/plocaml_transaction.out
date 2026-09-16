@@ -225,9 +225,7 @@ PL.commit ();
 PL.warning "should not get here"
 $$;
 ERROR:  insert or update on table "testfk" violates foreign key constraint "testfk_f1_fkey"
-CONTEXT:  Traceback (most recent call last):
-  PL/OCaml anonymous code block, line 3, in <function>
-PL/OCaml anonymous code block
+CONTEXT:  PL/OCaml anonymous code block
 SELECT * FROM testpk;
  id 
 ----
