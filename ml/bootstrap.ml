@@ -237,7 +237,9 @@ module Plocaml = struct
           (fun line ->
             match parse_backtrace_frame (String.trim line) with
             | Some (name, file, line_no)
-              when is_user_source_file file && not (is_runtime_frame_name name)
+              when is_user_source_file file
+                   && (not (is_runtime_frame_name name))
+                   && name <> "" && name <> "<function>" && name <> "<unknown>"
               ->
                 Some (name, file, line_no)
             | _ -> None)
@@ -264,16 +266,21 @@ module Plocaml = struct
           Some (Buffer.contents buf)
 
     let capture_callstack () =
-      if !suppress_backtrace then ()
+      if !suppress_backtrace || !runtime_backtrace <> None then ()
       else
-        runtime_backtrace :=
+        match
           format_traceback
             (Printexc.raw_backtrace_to_string (Printexc.get_callstack 64))
+        with
+        | Some _ as s -> runtime_backtrace := s
+        | None -> ()
 
     let note_exception_backtrace () =
-      if !suppress_backtrace then ()
-      else if !runtime_backtrace = None then
-        runtime_backtrace := format_traceback (Printexc.get_backtrace ())
+      if !suppress_backtrace || !runtime_backtrace <> None then ()
+      else
+        match format_traceback (Printexc.get_backtrace ()) with
+        | Some _ as s -> runtime_backtrace := s
+        | None -> ()
 
     let clear_runtime_backtrace () = runtime_backtrace := None
 
