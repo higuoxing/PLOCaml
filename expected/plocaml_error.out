@@ -149,7 +149,6 @@ $$ LANGUAGE plocamlu;
 SELECT nested_error();
 ERROR:  boom
 CONTEXT:  Traceback (most recent call last):
-  PL/OCaml function "nested_error", line 6, in nested_error
   PL/OCaml function "nested_error", line 4, in fun3
   PL/OCaml function "nested_error", line 3, in fun2
   PL/OCaml function "nested_error", line 2, in fun1
@@ -168,7 +167,6 @@ $$ LANGUAGE plocamlu;
 SELECT nested_error_raise();
 ERROR:  boom
 CONTEXT:  Traceback (most recent call last):
-  PL/OCaml function "nested_error_raise", line 6, in nested_error_raise
   PL/OCaml function "nested_error_raise", line 4, in fun3
   PL/OCaml function "nested_error_raise", line 3, in fun2
   PL/OCaml function "nested_error_raise", line 2, in fun1
@@ -232,7 +230,6 @@ $$ LANGUAGE plocamlu;
 SELECT ocaml_traceback();
 ERROR:  division by zero
 CONTEXT:  Traceback (most recent call last):
-  PL/OCaml function "ocaml_traceback", line 6, in ocaml_traceback
   PL/OCaml function "ocaml_traceback", line 2, in first
   PL/OCaml function "ocaml_traceback", line 3, in second
   PL/OCaml function "ocaml_traceback", line 4, in third
@@ -244,7 +241,6 @@ PL/pgSQL function sql_error() line 3 at SQL statement
 SELECT ocaml_from_sql_error();
 ERROR:  division by zero
 CONTEXT:  Traceback (most recent call last):
-  PL/OCaml function "ocaml_traceback", line 6, in ocaml_traceback
   PL/OCaml function "ocaml_traceback", line 2, in first
   PL/OCaml function "ocaml_traceback", line 3, in second
   PL/OCaml function "ocaml_traceback", line 4, in third
@@ -381,6 +377,5 @@ $$ LANGUAGE plocamlu;
 SELECT ocaml_error_detail();
 ERROR:  invalid value "xy" for "DD"
 CONTEXT:  Traceback (most recent call last):
-  PL/OCaml function "ocaml_error_detail", line 9, in ocaml_error_detail
   PL/OCaml function "ocaml_error_detail", line 5, in acc
 PL/OCaml function "ocaml_error_detail"
