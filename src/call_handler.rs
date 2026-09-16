@@ -110,6 +110,7 @@ pub extern "C-unwind" fn plocaml_call_handler(fcinfo: pg_sys::FunctionCallInfo) 
     let fn_oid_val = unsafe { ocaml::Value::new(ocaml::sys::val_int(fn_oid.to_u32() as isize)) };
     let proname_val = unsafe { ocaml::Value::string(&proname) };
     let prosrc_val = unsafe { ocaml::Value::string(&prosrc) };
+    let _errctx = crate::error::ErrorContextGuard::push(&proname);
 
     let result_val = unsafe {
         match crate::error::call_exn(

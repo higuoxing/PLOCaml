@@ -154,6 +154,8 @@ let raise_compile_error name detail =
 
 let init_toplevel (bootstrap_code : string) =
   if not !toplevel_initialized then (
+    Clflags.debug := true;
+    Printexc.record_backtrace true;
     Toploop.initialize_toplevel_env ();
     execute_phrases bootstrap_code;
     toplevel_initialized := true)
@@ -223,7 +225,8 @@ let compile_function (fn_oid : int) (proname : string) (prosrc : string)
     Buffer.add_string buf
       (Printf.sprintf "  let sd = Plocaml.get_sd %d in\n" fn_oid);
     Buffer.add_string buf "  let gd = Plocaml.gd in\n";
-    Buffer.add_string buf "  Obj.repr (begin\n";
+    Buffer.add_string buf "  try\n";
+    Buffer.add_string buf "    Obj.repr (begin\n";
     (* Reset locations onto the user body so type errors are not offset by
        the wrapper. Syntax is checked on the body alone first, so an
        incomplete function is not blamed on the `end)` that follows. *)
@@ -233,7 +236,9 @@ let compile_function (fn_oid : int) (proname : string) (prosrc : string)
     Buffer.add_string buf "\n";
     Buffer.add_string buf
       (Printf.sprintf "# 1 %s\n" (line_directive_filename "<plocaml-wrapper>"));
-    Buffer.add_string buf "  end)\n;;\n";
+    Buffer.add_string buf "    end)\n";
+    Buffer.add_string buf
+      "  with e ->\n    plocaml_note_exception_backtrace ();\n    raise e\n;;\n";
     execute_phrases ~filename:proname (Buffer.contents buf);
     let (fn : Obj.t array -> Obj.t) = Obj.obj (Toploop.getvalue var_name) in
     Hashtbl.replace compiled_functions fn_oid { src_code = prosrc; fn };

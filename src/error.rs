@@ -9,6 +9,7 @@ unsafe extern "C-unwind" {
     fn errmsg(fmt: *const ::std::os::raw::c_char, ...) -> ::std::os::raw::c_int;
     fn errdetail(fmt: *const ::std::os::raw::c_char, ...) -> ::std::os::raw::c_int;
     fn errhint(fmt: *const ::std::os::raw::c_char, ...) -> ::std::os::raw::c_int;
+    fn errcontext_msg(fmt: *const ::std::os::raw::c_char, ...) -> ::std::os::raw::c_int;
     fn err_generic_string(
         field: ::std::os::raw::c_int,
         str: *const ::std::os::raw::c_char,
@@ -32,6 +33,7 @@ pub(crate) struct ErrorInfo {
     pub column_name: Option<String>,
     pub datatype_name: Option<String>,
     pub constraint_name: Option<String>,
+    pub context: Option<String>,
 }
 
 pub(crate) enum OcamlError {
@@ -66,6 +68,7 @@ pub(crate) unsafe fn extract_error_info(info_val: sys::Value) -> ErrorInfo {
         column_name: extract_string_option(*sys::field(info_val, 6)),
         datatype_name: extract_string_option(*sys::field(info_val, 7)),
         constraint_name: extract_string_option(*sys::field(info_val, 8)),
+        context: None,
     }
 }
 
@@ -207,6 +210,15 @@ fn parse_ocaml_quoted_string(s: &str) -> Option<(String, &str)> {
     None
 }
 
+unsafe fn take_runtime_backtrace() -> Option<String> {
+    let take = Value::named("plocaml_take_backtrace")?;
+    let raw = sys::caml_callback_exn(take.raw().0, sys::UNIT);
+    if sys::is_exception_result(raw) {
+        return None;
+    }
+    extract_string_option(raw)
+}
+
 /// Safely invokes an OCaml closure with arguments, catching any OCaml exceptions
 /// without triggering `ocaml-rs`'s buggy `caml_modify` on stack variables.
 pub(crate) unsafe fn call_exn(closure: Value, args: &[Value]) -> Result<Value, OcamlError> {
@@ -221,14 +233,27 @@ pub(crate) unsafe fn call_exn(closure: Value, args: &[Value]) -> Result<Value, O
 
     if sys::is_exception_result(raw_res) {
         let exc = sys::extract_exception(raw_res);
-        if let Some(info) = decode_pl_error(exc) {
+        let context = take_runtime_backtrace();
+        if let Some(mut info) = decode_pl_error(exc) {
+            info.context = context;
             Err(OcamlError::Postgres(info))
         } else {
             let exc_val = Value::new(exc);
             let msg = exc_val
                 .exception_to_string()
                 .unwrap_or_else(|_| "Unknown OCaml exception".to_string());
-            Err(OcamlError::Other(unwrap_ocaml_exception_message(&msg)))
+            Err(OcamlError::Postgres(ErrorInfo {
+                message: unwrap_ocaml_exception_message(&msg),
+                detail: None,
+                hint: None,
+                sqlstate: None,
+                schema_name: None,
+                table_name: None,
+                column_name: None,
+                datatype_name: None,
+                constraint_name: None,
+                context,
+            }))
         }
     } else {
         Ok(Value::new(raw_res))
@@ -263,6 +288,13 @@ pub(crate) fn raise_postgres_error(info: ErrorInfo) -> ! {
                 .map(|h| CString::new(h.as_str()).unwrap_or_default());
             if let Some(h) = &hint_c {
                 errhint(c"%s".as_ptr(), h.as_ptr());
+            }
+            let context_c = info
+                .context
+                .as_ref()
+                .map(|c| CString::new(c.as_str()).unwrap_or_default());
+            if let Some(ctx) = &context_c {
+                errcontext_msg(c"%s".as_ptr(), ctx.as_ptr());
             }
             let schema_c = info
                 .schema_name
@@ -313,6 +345,53 @@ pub(crate) fn raise_postgres_error(info: ErrorInfo) -> ! {
     );
 }
 
+/// Push `PL/OCaml function "name"` (or anonymous code block) onto
+/// PostgreSQL's error_context_stack for the duration of a call/DO.
+pub(crate) struct ErrorContextGuard {
+    previous: *mut pg_sys::ErrorContextCallback,
+    _name: CString,
+    cb: Box<pg_sys::ErrorContextCallback>,
+}
+
+impl ErrorContextGuard {
+    pub(crate) fn push(name: &str) -> Self {
+        let name_c = CString::new(name).unwrap_or_default();
+        let previous = unsafe { pg_sys::error_context_stack };
+        let mut cb = Box::new(pg_sys::ErrorContextCallback {
+            previous,
+            callback: Some(plocaml_error_callback),
+            arg: std::ptr::null_mut(),
+        });
+        cb.arg = name_c.as_ptr() as *mut std::ffi::c_void;
+        unsafe {
+            pg_sys::error_context_stack = cb.as_mut();
+        }
+        Self {
+            previous,
+            _name: name_c,
+            cb,
+        }
+    }
+}
+
+impl Drop for ErrorContextGuard {
+    fn drop(&mut self) {
+        unsafe {
+            pg_sys::error_context_stack = self.previous;
+        }
+        let _keep = self.cb.previous;
+    }
+}
+
+unsafe extern "C-unwind" fn plocaml_error_callback(arg: *mut std::ffi::c_void) {
+    let name = std::ffi::CStr::from_ptr(arg as *const std::os::raw::c_char);
+    if name.to_bytes().is_empty() {
+        errcontext_msg(c"%s".as_ptr(), c"PL/OCaml anonymous code block".as_ptr());
+    } else {
+        errcontext_msg(c"PL/OCaml function \"%s\"".as_ptr(), arg);
+    }
+}
+
 /// Report a generic uncaught OCaml exception as a PostgreSQL error.
 ///
 /// The inner message is the ERROR text (same as `PL.error` / PL/Python),
@@ -330,6 +409,7 @@ pub(crate) fn raise_ocaml_error(err: OcamlError) -> ! {
             column_name: None,
             datatype_name: None,
             constraint_name: None,
+            context: None,
         }),
     }
 }

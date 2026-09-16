@@ -1,6 +1,6 @@
 -- Ported from PostgreSQL src/pl/plpython/sql/plpython_error.sql (REL_16_STABLE).
--- Python-only pieces omitted: typed plpy.spiexceptions classes, custom
--- exception.sqlstate, and SHOW_CONTEXT traceback tests.
+-- Python-only pieces omitted: typed plpy.spiexceptions classes and custom
+-- exception.sqlstate. Tracebacks are reported in CONTEXT like PL/Python.
 
 /* Flat out syntax error
  */
@@ -121,7 +121,7 @@ $$ LANGUAGE plocamlu;
 
 SELECT valid_type('rick');
 
-/* uncaught PL.error from nested functions
+/* error in nested functions to get a traceback
 */
 CREATE FUNCTION nested_error() RETURNS text
 	AS $$
@@ -149,7 +149,7 @@ $$ LANGUAGE plocamlu;
 
 SELECT nested_error_raise();
 
-/* PL.warning should not abort the call
+/* using PL.warning should not produce a traceback
 */
 CREATE FUNCTION nested_warning() RETURNS text
 	AS $$
