@@ -48,12 +48,14 @@ pub extern "C-unwind" fn plocaml_inline_handler(fcinfo: pg_sys::FunctionCallInfo
     // Ensure SPI_finish() is called upon normal return or unwinding
     let _spi_guard = SpiGuard;
 
+    let _errctx = crate::error::ErrorContextGuard::push("");
+
     // Execute the inline OCaml code if plocaml_execute callback is registered
     if let Some(execute_fn) = unsafe { ocaml::Value::named("plocaml_execute") } {
         let source_val = unsafe { ocaml::Value::string(source_text) };
         unsafe {
-            if let Err(err_msg) = crate::error::call_exn(execute_fn, &[source_val]) {
-                crate::error::raise_ocaml_error(err_msg);
+            if let Err(err) = crate::error::call_exn(execute_fn, &[source_val]) {
+                crate::error::raise_ocaml_error(err);
             }
         }
     }

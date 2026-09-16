@@ -25,19 +25,27 @@ pub extern "C-unwind" fn plocaml_call_handler(fcinfo: pg_sys::FunctionCallInfo) 
     let flinfo = unsafe { &*(*fcinfo).flinfo };
     let fn_oid = flinfo.fn_oid;
 
-    let proc = match pgrx::pg_catalog::pg_proc::PgProc::new(fn_oid) {
-        Some(p) => p,
-        None => pgrx::error!(
-            "plocaml_call_handler: pg_proc entry not found for OID {:?}",
-            fn_oid
-        ),
+    // Copy pg_proc fields and drop the syscache pin *before* running user
+    // code. `PL.commit` / `SPI_commit` ends the current transaction; a live
+    // `PgProc` would leave a catcache reference owned by the old
+    // TopTransaction resource owner.
+    let (prosrc, proname, pronargs, proargtypes, proargnames, prorettype) = {
+        let proc = match pgrx::pg_catalog::pg_proc::PgProc::new(fn_oid) {
+            Some(p) => p,
+            None => pgrx::error!(
+                "plocaml_call_handler: pg_proc entry not found for OID {:?}",
+                fn_oid
+            ),
+        };
+        (
+            proc.prosrc(),
+            crate::validator::function_name(fn_oid),
+            proc.pronargs(),
+            proc.proargtypes(),
+            proc.proargnames(),
+            proc.prorettype(),
+        )
     };
-
-    let prosrc = proc.prosrc();
-    let pronargs = proc.pronargs();
-    let proargtypes = proc.proargtypes();
-    let proargnames = proc.proargnames();
-    let prorettype = proc.prorettype();
 
     let is_atomic = unsafe {
         let ctx = (*fcinfo).context;
@@ -100,12 +108,17 @@ pub extern "C-unwind" fn plocaml_call_handler(fcinfo: pg_sys::FunctionCallInfo) 
     let invoke_fn = unsafe { ocaml::Value::named("plocaml_invoke_function") }
         .unwrap_or_else(|| pgrx::error!("plocaml_invoke_function callback not registered"));
     let fn_oid_val = unsafe { ocaml::Value::new(ocaml::sys::val_int(fn_oid.to_u32() as isize)) };
+    let proname_val = unsafe { ocaml::Value::string(&proname) };
     let prosrc_val = unsafe { ocaml::Value::string(&prosrc) };
+    let _errctx = crate::error::ErrorContextGuard::push(&proname);
 
     let result_val = unsafe {
-        match crate::error::call_exn(invoke_fn, &[fn_oid_val, prosrc_val, names_arr_val, arr_val]) {
+        match crate::error::call_exn(
+            invoke_fn,
+            &[fn_oid_val, proname_val, prosrc_val, names_arr_val, arr_val],
+        ) {
             Ok(v) => v,
-            Err(err_msg) => crate::error::raise_ocaml_error(err_msg),
+            Err(err) => crate::error::raise_ocaml_error(err),
         }
     };
 
@@ -113,7 +126,9 @@ pub extern "C-unwind" fn plocaml_call_handler(fcinfo: pg_sys::FunctionCallInfo) 
     let (datum, isnull) = unsafe {
         match crate::typeio::ocaml_value_to_pg_datum(result_val.raw().0, prorettype) {
             Ok(res) => res,
-            Err(err_msg) => crate::error::raise_ocaml_error(err_msg),
+            Err(err_msg) => {
+                crate::error::raise_ocaml_error(crate::error::OcamlError::Other(err_msg))
+            }
         }
     };
 

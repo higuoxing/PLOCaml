@@ -1,0 +1,108 @@
+-- Ported from PostgreSQL src/pl/plpython/sql/plpython_ereport.sql (REL_16_STABLE).
+-- Omitted Python-only pieces: non-string detail objects, unknown kwargs,
+-- dual positional/named message, and exception-object attributes (e.spidata).
+
+CREATE FUNCTION elog_test() RETURNS void
+AS $$
+PL.debug ~detail:"some detail" "debug";
+PL.log ~detail:"some detail" "log";
+PL.info ~detail:"some detail" "info";
+PL.info "the question" ~detail:"42";
+PL.info "This is message text."
+  ~detail:"This is detail text"
+  ~hint:"This is hint text."
+  ~sqlstate:"XX000"
+  ~schema_name:"any info about schema"
+  ~table_name:"any info about table"
+  ~column_name:"any info about column"
+  ~datatype_name:"any info about datatype"
+  ~constraint_name:"any info about constraint";
+PL.notice ~detail:"some detail" "notice";
+PL.warning ~detail:"some detail" "warning";
+PL.error ~detail:"some detail" ~hint:"some hint" "stop on error"
+$$ LANGUAGE plocamlu;
+
+SELECT elog_test();
+
+-- should fail
+DO $$ PL.info ~sqlstate:"54444A" "wrong sqlstate" $$ LANGUAGE plocamlu;
+
+-- raise exception in ocaml, handle exception in plpgsql
+CREATE OR REPLACE FUNCTION raise_exception(_message text, _detail text DEFAULT NULL, _hint text DEFAULT NULL,
+                                           _sqlstate text DEFAULT NULL,
+                                           _schema_name text DEFAULT NULL,
+                                           _table_name text DEFAULT NULL,
+                                           _column_name text DEFAULT NULL,
+                                           _datatype_name text DEFAULT NULL,
+                                           _constraint_name text DEFAULT NULL)
+RETURNS void AS $$
+PL.error
+  ?detail:(PL.to_string_opt _detail)
+  ?hint:(PL.to_string_opt _hint)
+  ?sqlstate:(PL.to_string_opt _sqlstate)
+  ?schema_name:(PL.to_string_opt _schema_name)
+  ?table_name:(PL.to_string_opt _table_name)
+  ?column_name:(PL.to_string_opt _column_name)
+  ?datatype_name:(PL.to_string_opt _datatype_name)
+  ?constraint_name:(PL.to_string_opt _constraint_name)
+  (PL.to_string_exn _message)
+$$ LANGUAGE plocamlu;
+
+SELECT raise_exception('hello', 'world');
+SELECT raise_exception('message text', 'detail text', _sqlstate => 'YY333');
+SELECT raise_exception(_message => 'message text',
+                       _detail => 'detail text',
+                       _hint => 'hint text',
+                       _sqlstate => 'XX555',
+                       _schema_name => 'schema text',
+                       _table_name => 'table text',
+                       _column_name => 'column text',
+                       _datatype_name => 'datatype text',
+                       _constraint_name => 'constraint text');
+
+SELECT raise_exception(_message => 'message text',
+                       _hint => 'hint text',
+                       _schema_name => 'schema text',
+                       _column_name => 'column text',
+                       _constraint_name => 'constraint text');
+
+DO $$
+DECLARE
+  __message text;
+  __detail text;
+  __hint text;
+  __sqlstate text;
+  __schema_name text;
+  __table_name text;
+  __column_name text;
+  __datatype_name text;
+  __constraint_name text;
+BEGIN
+  BEGIN
+    PERFORM raise_exception(_message => 'message text',
+                            _detail => 'detail text',
+                            _hint => 'hint text',
+                            _sqlstate => 'XX555',
+                            _schema_name => 'schema text',
+                            _table_name => 'table text',
+                            _column_name => 'column text',
+                            _datatype_name => 'datatype text',
+                            _constraint_name => 'constraint text');
+  EXCEPTION WHEN SQLSTATE 'XX555' THEN
+    GET STACKED DIAGNOSTICS __message = MESSAGE_TEXT,
+                            __detail = PG_EXCEPTION_DETAIL,
+                            __hint = PG_EXCEPTION_HINT,
+                            __sqlstate = RETURNED_SQLSTATE,
+                            __schema_name = SCHEMA_NAME,
+                            __table_name = TABLE_NAME,
+                            __column_name = COLUMN_NAME,
+                            __datatype_name = PG_DATATYPE_NAME,
+                            __constraint_name = CONSTRAINT_NAME;
+    RAISE NOTICE 'handled exception'
+      USING DETAIL = format('message:(%s), detail:(%s), hint: (%s), sqlstate: (%s), '
+                            'schema_name:(%s), table_name:(%s), column_name:(%s), datatype_name:(%s), constraint_name:(%s)',
+                            __message, __detail, __hint, __sqlstate, __schema_name,
+                            __table_name, __column_name, __datatype_name, __constraint_name);
+  END;
+END;
+$$;

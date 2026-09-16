@@ -4,7 +4,7 @@ version = "0.0.0"
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "lib"]
 
 [features]
 default = ["pg18"]
@@ -15,7 +15,7 @@ pg16 = ["pgrx/pg16", "pgrx-tests/pg16" ]
 pg17 = ["pgrx/pg17", "pgrx-tests/pg17" ]
 pg18 = ["pgrx/pg18", "pgrx-tests/pg18" ]
 pg19 = ["pgrx/pg19", "pgrx-tests/pg19" ]
-pg_test = ["dep:pgrx-tests", "dep:postgres"]
+pg_test = ["dep:pgrx-tests", "dep:postgres", "dep:pgrx-pg-config"]
 pg_bench = ["dep:pgrx-bench"]
 
 [dependencies]
@@ -31,6 +31,10 @@ version = "=0.19.1"
 optional = true
 
 [dependencies.pgrx-bench]
+version = "=0.19.1"
+optional = true
+
+[dependencies.pgrx-pg-config]
 version = "=0.19.1"
 optional = true
 
