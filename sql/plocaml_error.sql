@@ -29,8 +29,7 @@ RESET check_function_bodies;
  */
 CREATE FUNCTION sql_syntax_error() RETURNS text
         AS $$
-  ignore (PL.execute "syntax error");
-  PL.Null
+  ignore (PL.execute "syntax error")
 $$ LANGUAGE plocamlu;
 
 SELECT sql_syntax_error();
