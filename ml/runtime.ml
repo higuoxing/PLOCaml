@@ -189,6 +189,7 @@ let init_toplevel (bootstrap_code : string) =
     toplevel_initialized := true)
 
 let execute_inline (source_text : string) : unit =
+  try_named_unit "plocaml_clear_backtrace";
   Fun.protect
     ~finally:(fun () -> Gc.full_major ())
     (fun () -> execute_phrases ~filename:"<anonymous>" source_text)
@@ -289,6 +290,7 @@ let invoke_function (fn_oid : int) (proname : string) (prosrc : string)
     | Some entry when String.equal entry.src_code prosrc -> entry.fn
     | _ -> compile_function fn_oid proname prosrc arg_names
   in
+  try_named_unit "plocaml_clear_backtrace";
   Fun.protect ~finally:(fun () -> Gc.full_major ()) (fun () -> fn args)
 
 let () =

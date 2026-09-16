@@ -260,7 +260,7 @@ module Plocaml = struct
 
     let capture_callstack () =
       if !suppress_backtrace then ()
-      else if !runtime_backtrace = None then
+      else
         runtime_backtrace :=
           format_traceback
             (Printexc.raw_backtrace_to_string (Printexc.get_callstack 64))
@@ -269,6 +269,8 @@ module Plocaml = struct
       if !suppress_backtrace then ()
       else if !runtime_backtrace = None then
         runtime_backtrace := format_traceback (Printexc.get_backtrace ())
+
+    let clear_runtime_backtrace () = runtime_backtrace := None
 
     let report (level : log_level) ?detail ?hint ?sqlstate ?schema_name
         ?table_name ?column_name ?datatype_name ?constraint_name
@@ -455,6 +457,8 @@ let plocaml_raise_compile_error (name : string) (detail : string) =
         (Printf.sprintf "could not compile PL/OCaml function \"%s\"" name))
 
 let plocaml_note_exception_backtrace () = PL.Log.note_exception_backtrace ()
+
+let plocaml_clear_backtrace () = PL.Log.clear_runtime_backtrace ()
 
 let plocaml_take_backtrace () : string option =
   let bt = !PL.Log.runtime_backtrace in
