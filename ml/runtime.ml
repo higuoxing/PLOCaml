@@ -123,6 +123,23 @@ let execute_phrases ?(filename = "_none_") (source : string) : unit =
         failwith (if msg = "" then "Execution failed" else msg)))
     (List.rev !phrases)
 
+let rstrip_trailing_newlines s =
+  let rec aux i =
+    if i > 0 && (s.[i - 1] = '\n' || s.[i - 1] = '\r') then aux (i - 1)
+    else String.sub s 0 i
+  in
+  aux (String.length s)
+
+(* Parse the user body as an expression so an incomplete function is reported
+   at EOF of the stored source, not on the wrapper `end)` that follows it. *)
+let parse_user_expression proname prosrc =
+  let source = rstrip_trailing_newlines (normalize_newlines prosrc) in
+  let lexbuf = Lexing.from_string source in
+  Location.init lexbuf proname;
+  Location.input_name := proname;
+  try ignore (Parse.expression lexbuf)
+  with e -> failwith (reported_exception_message e)
+
 let raise_compile_error name detail =
   let raiser : string -> string -> unit =
     try Obj.obj (Toploop.getvalue "plocaml_raise_compile_error")
@@ -188,6 +205,7 @@ let compiled_functions : (int, compiled_entry) Hashtbl.t = Hashtbl.create 32
 let compile_function (fn_oid : int) (proname : string) (prosrc : string)
     (arg_names : string array) : Obj.t array -> Obj.t =
   try
+    parse_user_expression proname prosrc;
     let var_name = Printf.sprintf "__plocaml_fn_%d" fn_oid in
     let nargs = Array.length arg_names in
     let buf = Buffer.create (String.length prosrc + 256) in
@@ -206,12 +224,16 @@ let compile_function (fn_oid : int) (proname : string) (prosrc : string)
       (Printf.sprintf "  let sd = Plocaml.get_sd %d in\n" fn_oid);
     Buffer.add_string buf "  let gd = Plocaml.gd in\n";
     Buffer.add_string buf "  Obj.repr (begin\n";
-    (* Reset locations onto the user body so errors are not offset by the
-       wrapper (`let __plocaml_fn_…`, `sd`/`gd` binds, `Obj.repr (begin`). *)
+    (* Reset locations onto the user body so type errors are not offset by
+       the wrapper. Syntax is checked on the body alone first, so an
+       incomplete function is not blamed on the `end)` that follows. *)
     Buffer.add_string buf
       (Printf.sprintf "# 1 %s\n" (line_directive_filename proname));
     Buffer.add_string buf prosrc;
-    Buffer.add_string buf "\n  end)\n;;\n";
+    Buffer.add_string buf "\n";
+    Buffer.add_string buf
+      (Printf.sprintf "# 1 %s\n" (line_directive_filename "<plocaml-wrapper>"));
+    Buffer.add_string buf "  end)\n;;\n";
     execute_phrases ~filename:proname (Buffer.contents buf);
     let (fn : Obj.t array -> Obj.t) = Obj.obj (Toploop.getvalue var_name) in
     Hashtbl.replace compiled_functions fn_oid { src_code = prosrc; fn };
