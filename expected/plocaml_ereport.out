@@ -36,7 +36,7 @@ ERROR:  stop on error
 DETAIL:  some detail
 HINT:  some hint
 CONTEXT:  Traceback (most recent call last):
-  PL/OCaml function "elog_test", line 17, in <function>
+  PL/OCaml function "elog_test", line 17, in elog_test
 PL/OCaml function "elog_test"
 -- should fail
 DO $$ PL.info ~sqlstate:"54444A" "wrong sqlstate" $$ LANGUAGE plocamlu;

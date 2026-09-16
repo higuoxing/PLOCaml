@@ -134,18 +134,23 @@ module Plocaml = struct
     let display_frame_name name file =
       let prefix = "__plocaml_fn_" in
       let plen = String.length prefix in
-      if String.length name >= plen && String.sub name 0 plen = prefix then
-        let rec skip_digits i =
-          if i < String.length name && name.[i] >= '0' && name.[i] <= '9' then
-            skip_digits (i + 1)
-          else i
-        in
-        let i = skip_digits plen in
-        if i < String.length name && name.[i] = '.' then
-          String.sub name (i + 1) (String.length name - i - 1)
-        else if file = "<anonymous>" || file = "" then "<function>"
-        else file
-      else name
+      let mapped =
+        if String.length name >= plen && String.sub name 0 plen = prefix then
+          let rec skip_digits i =
+            if i < String.length name && name.[i] >= '0' && name.[i] <= '9'
+            then skip_digits (i + 1)
+            else i
+          in
+          let i = skip_digits plen in
+          if i < String.length name && name.[i] = '.' then
+            String.sub name (i + 1) (String.length name - i - 1)
+          else if file = "<anonymous>" || file = "" then "<function>"
+          else file
+        else name
+      in
+      if mapped = "" || mapped = "<unknown>" then
+        if file <> "" && file <> "<anonymous>" then file else "<function>"
+      else mapped
 
     let parse_backtrace_frame line =
       let markers =
