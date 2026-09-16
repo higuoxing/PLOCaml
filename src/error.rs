@@ -97,6 +97,19 @@ unsafe fn decode_pl_error(exc: sys::Value) -> Option<ErrorInfo> {
     Some(extract_error_info(*sys::field(raw, 0)))
 }
 
+/// Printexc / Toploop append `Raised at` / `Called from` after the
+/// exception text when `record_backtrace` is on. Keep that out of ERROR.
+fn strip_appended_ocaml_backtrace(s: &str) -> &str {
+    let markers = ["\nRaised ", "\nCalled from ", "\nRe-raised "];
+    let mut cut = s.len();
+    for marker in markers {
+        if let Some(i) = s.find(marker) {
+            cut = cut.min(i);
+        }
+    }
+    s[..cut].trim_end()
+}
+
 /// Strip `Failure("…")`, `Invalid_argument("…")`, and Toploop
 /// `Exception: Failure "…".` wrappers so PostgreSQL DETAIL shows the
 /// inner message rather than OCaml's exception printer.
@@ -105,7 +118,7 @@ pub(crate) fn unwrap_ocaml_exception_message(s: &str) -> String {
     loop {
         let next = unwrap_ocaml_exception_once(&current);
         if next == current {
-            return current.trim().to_string();
+            return strip_appended_ocaml_backtrace(current.trim()).to_string();
         }
         current = next;
     }
@@ -115,13 +128,14 @@ fn unwrap_ocaml_exception_once(s: &str) -> String {
     let s = s.trim();
 
     if let Some(inner) = strip_paren_string_ctor(s, "Failure") {
-        return inner;
+        return strip_appended_ocaml_backtrace(&inner).to_string();
     }
     if let Some(inner) = strip_paren_string_ctor(s, "Invalid_argument") {
-        return inner;
+        return strip_appended_ocaml_backtrace(&inner).to_string();
     }
 
     let body = s.strip_prefix("Exception:").map(str::trim).unwrap_or(s);
+    let body = strip_appended_ocaml_backtrace(body);
 
     if let Some(inner) = strip_quoted_string_ctor(body, "Failure") {
         return inner;
@@ -130,6 +144,9 @@ fn unwrap_ocaml_exception_once(s: &str) -> String {
         return inner;
     }
 
+    if body != s {
+        return body.to_string();
+    }
     s.to_string()
 }
 
@@ -472,6 +489,28 @@ Error: Syntax error
         assert_eq!(
             unwrap_ocaml_exception_message("Env.Error(_)"),
             "Env.Error(_)"
+        );
+    }
+
+    #[test]
+    fn strips_appended_printexc_backtrace() {
+        assert_eq!(
+            unwrap_ocaml_exception_message(
+                "Exception: Failure \"error test\".\nCalled from unknown location\nCalled from unknown location"
+            ),
+            "error test"
+        );
+        assert_eq!(
+            unwrap_ocaml_exception_message(
+                "Failure(\"Exception: Failure \"uncaught error\".\nRaised by primitive operation at unknown location\")"
+            ),
+            "uncaught error"
+        );
+        assert_eq!(
+            unwrap_ocaml_exception_message(
+                "Exception: Failure \"invalid transaction termination\".\nRaised by primitive operation at unknown location\nCalled from unknown location"
+            ),
+            "invalid transaction termination"
         );
     }
 }

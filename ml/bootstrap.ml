@@ -72,11 +72,31 @@ module Plocaml = struct
     let suppress_backtrace = ref false
 
     let is_user_source_file f =
-      f <> "" && f <> "<plocaml-wrapper>" && f <> "_none_"
-      && (not (String.contains f '/'))
-      && (not (Filename.check_suffix f ".ml"))
-      && (not (Filename.check_suffix f ".mli"))
-      && not (Filename.check_suffix f ".c")
+      f = "<anonymous>"
+      || (f <> ""
+         && f <> "<plocaml-wrapper>"
+         && f <> "<plocaml-bootstrap>"
+         && f <> "_none_"
+         && (not (String.contains f '/'))
+         && (not (Filename.check_suffix f ".ml"))
+         && (not (Filename.check_suffix f ".mli"))
+         && not (Filename.check_suffix f ".c"))
+
+    let is_runtime_frame_name name =
+      let has_prefix p =
+        let n = String.length p in
+        String.length name >= n && String.sub name 0 n = p
+      in
+      has_prefix "Plocaml.Log"
+      || has_prefix "Camlinternal"
+      || has_prefix "Toploop."
+      || has_prefix "Printexc."
+      || has_prefix "Stdlib.Printexc"
+      || has_prefix "plocaml_"
+      || name = "format_traceback"
+      || name = "capture_callstack"
+      || name = "note_exception_backtrace"
+      || name = "parse_backtrace_frame"
 
     let display_frame_name s =
       let prefix = "__plocaml_fn_" in
@@ -173,9 +193,9 @@ module Plocaml = struct
         List.filter_map
           (fun line ->
             match parse_backtrace_frame (String.trim line) with
-            | Some (name, file, line_no) when is_user_source_file file ->
-                Some (name, file, line_no)
-            | Some (name, file, line_no) when file = "_none_" ->
+            | Some (name, file, line_no)
+              when is_user_source_file file && not (is_runtime_frame_name name)
+              ->
                 Some (name, file, line_no)
             | _ -> None)
           (split raw)
@@ -188,7 +208,7 @@ module Plocaml = struct
           List.iter
             (fun (name, file, line_no) ->
               Buffer.add_char buf '\n';
-              if file = "_none_" || file = "" then
+              if file = "<anonymous>" || file = "" then
                 Buffer.add_string buf
                   (Printf.sprintf
                      "  PL/OCaml anonymous code block, line %d, in %s" line_no

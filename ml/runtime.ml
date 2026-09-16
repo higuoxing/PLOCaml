@@ -77,6 +77,40 @@ let line_directive_filename name =
   Buffer.add_char buf '"';
   Buffer.contents buf
 
+let find_substring s sub =
+  let n = String.length sub in
+  let rec loop i =
+    if i + n > String.length s then None
+    else if String.sub s i n = sub then Some i
+    else loop (i + 1)
+  in
+  loop 0
+
+(* Toploop prints Printexc backtraces into the phrase buffer when
+   record_backtrace is on. Those belong in CONTEXT, not ERROR. *)
+let strip_printed_backtrace s =
+  let markers = [ "\nRaised "; "\nCalled from "; "\nRe-raised " ] in
+  let rec earliest acc = function
+    | [] -> acc
+    | m :: rest ->
+        let acc =
+          match find_substring s m with
+          | Some i -> (
+              match acc with None -> Some i | Some j -> Some (min i j))
+          | None -> acc
+        in
+        earliest acc rest
+  in
+  match earliest None markers with
+  | None -> String.trim s
+  | Some i -> String.trim (String.sub s 0 i)
+
+let try_named_unit name =
+  try
+    let f : unit -> unit = Obj.obj (Toploop.getvalue name) in
+    f ()
+  with Not_found -> ()
+
 let execute_phrases ?(filename = "_none_") (source : string) : unit =
   let source = normalize_newlines source in
   let buf = Buffer.create 128 in
@@ -111,15 +145,9 @@ let execute_phrases ?(filename = "_none_") (source : string) : unit =
       Buffer.clear buf;
       if not (Toploop.execute_phrase false fmt p) then (
         Format.pp_print_flush fmt ();
-        (try
-           let reraiser : unit -> unit =
-             Obj.obj (Toploop.getvalue "reraise_pending_error")
-           in
-           reraiser ()
-         with
-        | Not_found -> ()
-        | e -> raise e);
-        let msg = String.trim (Buffer.contents buf) in
+        (try try_named_unit "reraise_pending_error" with e -> raise e);
+        try_named_unit "plocaml_note_exception_backtrace";
+        let msg = strip_printed_backtrace (Buffer.contents buf) in
         failwith (if msg = "" then "Execution failed" else msg)))
     (List.rev !phrases)
 
@@ -157,13 +185,13 @@ let init_toplevel (bootstrap_code : string) =
     Clflags.debug := true;
     Printexc.record_backtrace true;
     Toploop.initialize_toplevel_env ();
-    execute_phrases bootstrap_code;
+    execute_phrases ~filename:"<plocaml-bootstrap>" bootstrap_code;
     toplevel_initialized := true)
 
 let execute_inline (source_text : string) : unit =
   Fun.protect
     ~finally:(fun () -> Gc.full_major ())
-    (fun () -> execute_phrases source_text)
+    (fun () -> execute_phrases ~filename:"<anonymous>" source_text)
 
 let is_ocaml_keyword = function
   | "and" | "as" | "assert" | "asr" | "begin" | "class" | "constraint" | "do"
@@ -226,20 +254,21 @@ let compile_function (fn_oid : int) (proname : string) (prosrc : string)
       (Printf.sprintf "  let sd = Plocaml.get_sd %d in\n" fn_oid);
     Buffer.add_string buf "  let gd = Plocaml.gd in\n";
     Buffer.add_string buf "  try\n";
-    Buffer.add_string buf "    Obj.repr (begin\n";
-    (* Reset locations onto the user body so type errors are not offset by
-       the wrapper. Syntax is checked on the body alone first, so an
-       incomplete function is not blamed on the `end)` that follows. *)
+    Buffer.add_string buf "    Obj.repr (\n";
+    (* Reset locations onto the user body so type errors and backtraces
+       are not offset by the wrapper. Syntax is checked on the body
+       alone first, so an incomplete function is not blamed on the
+       closing `)` that follows. *)
     Buffer.add_string buf
       (Printf.sprintf "# 1 %s\n" (line_directive_filename proname));
     Buffer.add_string buf prosrc;
     Buffer.add_string buf "\n";
     Buffer.add_string buf
       (Printf.sprintf "# 1 %s\n" (line_directive_filename "<plocaml-wrapper>"));
-    Buffer.add_string buf "    end)\n";
+    Buffer.add_string buf "    )\n";
     Buffer.add_string buf
       "  with e ->\n    plocaml_note_exception_backtrace ();\n    raise e\n;;\n";
-    execute_phrases ~filename:proname (Buffer.contents buf);
+    execute_phrases ~filename:"<plocaml-wrapper>" (Buffer.contents buf);
     let (fn : Obj.t array -> Obj.t) = Obj.obj (Toploop.getvalue var_name) in
     Hashtbl.replace compiled_functions fn_oid { src_code = prosrc; fn };
     fn

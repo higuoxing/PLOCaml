@@ -125,9 +125,9 @@ SELECT valid_type('rick');
 */
 CREATE FUNCTION nested_error() RETURNS text
 	AS $$
-let rec fun1 () = PL.error "boom"
-and fun2 () = fun1 ()
-and fun3 () = fun2 ()
+let rec fun1 () = PL.error "boom"; ()
+and fun2 () = fun1 (); ()
+and fun3 () = fun2 (); ()
 in
 fun3 ();
 PL.String "not reached"
@@ -139,9 +139,9 @@ SELECT nested_error();
 */
 CREATE FUNCTION nested_error_raise() RETURNS text
 	AS $$
-let rec fun1 () = failwith "boom"
-and fun2 () = fun1 ()
-and fun3 () = fun2 ()
+let rec fun1 () = failwith "boom"; ()
+and fun2 () = fun1 (); ()
+and fun3 () = fun2 (); ()
 in
 fun3 ();
 PL.String "not reached"
@@ -175,8 +175,8 @@ SELECT toplevel_attribute_error();
 /* Calling PL/OCaml functions from SQL and vice versa should not lose context.
  */
 CREATE OR REPLACE FUNCTION ocaml_traceback() RETURNS void AS $$
-let rec first () = second ()
-and second () = third ()
+let rec first () = second (); ()
+and second () = third (); ()
 and third () = ignore (PL.execute "select sql_error()")
 in
 first ();
