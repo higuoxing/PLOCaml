@@ -245,7 +245,25 @@ module Plocaml = struct
             | _ -> None)
           (split raw)
       in
-      match List.rev frames with
+      (* Bytecode TCO differs across OCaml versions: 4.14 keeps outer
+         wrapper / extra `(fun)` thunks that 5 drops. Keep nested names
+         and a single innermost anonymous thunk so CONTEXT is stable. *)
+      let stabilize frames =
+        let nested =
+          List.filter (fun (name, file, _) -> name <> file) frames
+        in
+        let frames = if nested = [] then frames else nested in
+        let rec keep_innermost_fun acc seen_fun = function
+          | [] -> acc
+          | ((name, _, _) as frame) :: rest ->
+              if name = "(fun)" then
+                if seen_fun then keep_innermost_fun acc true rest
+                else keep_innermost_fun (frame :: acc) true rest
+              else keep_innermost_fun (frame :: acc) seen_fun rest
+        in
+        keep_innermost_fun [] false (List.rev frames)
+      in
+      match stabilize (List.rev frames) with
       | [] -> None
       | frames ->
           let buf = Buffer.create 128 in
