@@ -121,7 +121,7 @@ $$ LANGUAGE plocamlu;
 
 SELECT valid_type('rick');
 
-/* error in nested functions to get a traceback
+/* uncaught PL.error from nested functions
 */
 CREATE FUNCTION nested_error() RETURNS text
 	AS $$
@@ -149,7 +149,7 @@ $$ LANGUAGE plocamlu;
 
 SELECT nested_error_raise();
 
-/* using PL.warning should not produce a traceback
+/* PL.warning should not abort the call
 */
 CREATE FUNCTION nested_warning() RETURNS text
 	AS $$
