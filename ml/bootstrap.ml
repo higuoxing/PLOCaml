@@ -41,21 +41,50 @@ module Plocaml = struct
     e_constraint_name : string option;
   }
 
+  (* Filled after [Log] is defined so C primitives that [caml_failwith]
+     can still record a user callstack on the way out. *)
+  let capture_runtime_backtrace = ref (fun () -> ())
+
+  let with_runtime_backtrace f =
+    try f ()
+    with e ->
+      !capture_runtime_backtrace ();
+      raise e
+
   (* SPI Operations *)
   module SPI = struct
-    external execute : string -> spi_result = "plocaml_spi_execute"
-    external prepare : string -> string array -> plan = "plocaml_spi_prepare"
+    external execute_prim : string -> spi_result = "plocaml_spi_execute"
+    external prepare_prim : string -> string array -> plan
+      = "plocaml_spi_prepare"
 
-    external execute_plan : plan -> datum array -> spi_result
+    external execute_plan_prim : plan -> datum array -> spi_result
       = "plocaml_spi_execute_plan"
 
-    external cursor : string -> cursor = "plocaml_spi_cursor_open"
+    external cursor_prim : string -> cursor = "plocaml_spi_cursor_open"
 
-    external cursor_plan : plan -> datum array -> cursor
+    external cursor_plan_prim : plan -> datum array -> cursor
       = "plocaml_spi_cursor_open_plan"
 
-    external fetch : cursor -> int -> spi_result = "plocaml_spi_cursor_fetch"
-    external close : cursor -> unit = "plocaml_spi_cursor_close"
+    external fetch_prim : cursor -> int -> spi_result
+      = "plocaml_spi_cursor_fetch"
+
+    external close_prim : cursor -> unit = "plocaml_spi_cursor_close"
+
+    let execute sql = with_runtime_backtrace (fun () -> execute_prim sql)
+
+    let prepare sql types =
+      with_runtime_backtrace (fun () -> prepare_prim sql types)
+
+    let execute_plan plan args =
+      with_runtime_backtrace (fun () -> execute_plan_prim plan args)
+
+    let cursor sql = with_runtime_backtrace (fun () -> cursor_prim sql)
+
+    let cursor_plan plan args =
+      with_runtime_backtrace (fun () -> cursor_plan_prim plan args)
+
+    let fetch cur n = with_runtime_backtrace (fun () -> fetch_prim cur n)
+    let close cur = with_runtime_backtrace (fun () -> close_prim cur)
   end
 
   (* Logging and Error Reporting *)
@@ -97,21 +126,26 @@ module Plocaml = struct
       || name = "capture_callstack"
       || name = "note_exception_backtrace"
       || name = "parse_backtrace_frame"
+      || name = "with_runtime_backtrace"
 
-    let display_frame_name s =
+    (* Compiled bodies are `__plocaml_fn_<oid>`; use the SQL name from
+       `# 1 "proname"` for that outer frame. Nested `let rec fun1`
+       still show as `fun1`. *)
+    let display_frame_name name file =
       let prefix = "__plocaml_fn_" in
       let plen = String.length prefix in
-      if String.length s >= plen && String.sub s 0 plen = prefix then
+      if String.length name >= plen && String.sub name 0 plen = prefix then
         let rec skip_digits i =
-          if i < String.length s && s.[i] >= '0' && s.[i] <= '9' then
+          if i < String.length name && name.[i] >= '0' && name.[i] <= '9' then
             skip_digits (i + 1)
           else i
         in
         let i = skip_digits plen in
-        if i < String.length s && s.[i] = '.' then
-          String.sub s (i + 1) (String.length s - i - 1)
-        else "<function>"
-      else s
+        if i < String.length name && name.[i] = '.' then
+          String.sub name (i + 1) (String.length name - i - 1)
+        else if file = "<anonymous>" || file = "" then "<function>"
+        else file
+      else name
 
     let parse_backtrace_frame line =
       let markers =
@@ -178,7 +212,11 @@ module Plocaml = struct
                   in
                   let nstr = take_digits num "" 0 in
                   if nstr = "" then None
-                  else Some (display_frame_name name, file, int_of_string nstr))
+                  else
+                    Some
+                      ( display_frame_name name file,
+                        file,
+                        int_of_string nstr ))
           )
 
     let format_traceback raw =
@@ -290,6 +328,8 @@ module Plocaml = struct
       report level message
   end
 
+  let () = capture_runtime_backtrace := Log.capture_callstack
+
   (* String Quoting *)
   module Quote = struct
     external literal : string -> string = "plocaml_quote_literal"
@@ -300,9 +340,13 @@ module Plocaml = struct
   end
 
   (* Transaction & Subtransaction Control *)
-  external subtransaction : (unit -> 'a) -> 'a = "plocaml_subtransaction"
-  external commit : unit -> unit = "plocaml_commit"
-  external rollback : unit -> unit = "plocaml_rollback"
+  external subtransaction_prim : (unit -> 'a) -> 'a = "plocaml_subtransaction"
+  external commit_prim : unit -> unit = "plocaml_commit"
+  external rollback_prim : unit -> unit = "plocaml_rollback"
+
+  let subtransaction f = with_runtime_backtrace (fun () -> subtransaction_prim f)
+  let commit () = with_runtime_backtrace commit_prim
+  let rollback () = with_runtime_backtrace rollback_prim
 
   (* Session / Function Storage *)
   type store = (string, Obj.t) Hashtbl.t
