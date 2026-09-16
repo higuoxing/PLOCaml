@@ -35,6 +35,9 @@ DETAIL:  some detail
 ERROR:  stop on error
 DETAIL:  some detail
 HINT:  some hint
+CONTEXT:  Traceback (most recent call last):
+  PL/OCaml function "elog_test", line 17, in <function>
+PL/OCaml function "elog_test"
 -- should fail
 DO $$ PL.info ~sqlstate:"54444A" "wrong sqlstate" $$ LANGUAGE plocamlu;
 INFO:  wrong sqlstate
@@ -61,9 +64,11 @@ $$ LANGUAGE plocamlu;
 SELECT raise_exception('hello', 'world');
 ERROR:  hello
 DETAIL:  world
+CONTEXT:  PL/OCaml function "raise_exception"
 SELECT raise_exception('message text', 'detail text', _sqlstate => 'YY333');
 ERROR:  message text
 DETAIL:  detail text
+CONTEXT:  PL/OCaml function "raise_exception"
 SELECT raise_exception(_message => 'message text',
                        _detail => 'detail text',
                        _hint => 'hint text',
@@ -76,6 +81,7 @@ SELECT raise_exception(_message => 'message text',
 ERROR:  message text
 DETAIL:  detail text
 HINT:  hint text
+CONTEXT:  PL/OCaml function "raise_exception"
 SELECT raise_exception(_message => 'message text',
                        _hint => 'hint text',
                        _schema_name => 'schema text',
@@ -83,6 +89,7 @@ SELECT raise_exception(_message => 'message text',
                        _constraint_name => 'constraint text');
 ERROR:  message text
 HINT:  hint text
+CONTEXT:  PL/OCaml function "raise_exception"
 DO $$
 DECLARE
   __message text;

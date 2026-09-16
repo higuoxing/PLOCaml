@@ -52,6 +52,9 @@ PL.Int 1
 $$;
 SELECT transaction_test2();
 ERROR:  invalid transaction termination
+CONTEXT:  Traceback (most recent call last):
+  PL/OCaml function "transaction_test2", line 4, in <function>
+PL/OCaml function "transaction_test2"
 SELECT * FROM test1;
  a | b 
 ---+---
@@ -66,6 +69,9 @@ PL.Int 1
 $$;
 SELECT transaction_test3();
 ERROR:  invalid transaction termination
+CONTEXT:  Traceback (most recent call last):
+  PL/OCaml function "transaction_test3", line 2, in <function>
+PL/OCaml function "transaction_test3"
 SELECT * FROM test1;
  a | b 
 ---+---
@@ -80,11 +86,15 @@ PL.Int 1
 $$;
 SELECT transaction_test4();
 ERROR:  invalid transaction termination
+CONTEXT:  Traceback (most recent call last):
+  PL/OCaml function "transaction_test4", line 2, in <function>
+PL/OCaml function "transaction_test4"
 -- commit inside subtransaction (prohibited)
 DO LANGUAGE plocamlu $$
 PL.subtransaction (fun () -> PL.commit ())
 $$;
 ERROR:  cannot commit while a subtransaction is active
+CONTEXT:  PL/OCaml anonymous code block
 -- commit inside cursor loop
 CREATE TABLE test2 (x int);
 INSERT INTO test2 VALUES (0), (1), (2), (3), (4);
@@ -136,6 +146,7 @@ in
 loop ()
 $$;
 ERROR:  division by zero
+CONTEXT:  PL/OCaml anonymous code block
 SELECT * FROM test1;
   a  | b 
 -----+---
@@ -212,6 +223,7 @@ PL.commit ();
 PL.warning "should not get here"
 $$;
 ERROR:  insert or update on table "testfk" violates foreign key constraint "testfk_f1_fkey"
+CONTEXT:  PL/OCaml anonymous code block
 SELECT * FROM testpk;
  id 
 ----
