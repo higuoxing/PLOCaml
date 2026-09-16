@@ -96,9 +96,10 @@ SELECT invalid_type_caught('rick');
 CREATE FUNCTION invalid_type_reraised(a text) RETURNS text
 	AS $$
 if not (Hashtbl.mem sd "plan") then
-  try
+  (try
     PL.set sd "plan" (PL.prepare "SELECT fname FROM users WHERE lname = $1" [|"test"|])
-  with Failure ex -> PL.error ex;
+  with Failure ex ->
+    PL.error ex);
 let rv = PL.execute_plan (PL.get sd "plan") [| a |] in
 if Array.length rv.rows > 0 then List.assoc "fname" rv.rows.(0)
 else PL.Null
